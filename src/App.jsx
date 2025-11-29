@@ -24,6 +24,18 @@ import {
   Edit2,
   Check
 } from 'lucide-react';
+import { auth } from './firebaseClient';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+  sendEmailVerification,
+  GoogleAuthProvider,
+  signInWithPopup,
+} from 'firebase/auth';
 
 // --- Constants & Config ---
 
@@ -90,61 +102,183 @@ const getDayName = (dateStr) => {
 
 // --- Sub-Components (Defined outside App to prevent re-render bugs) ---
 
-const AuthView = ({ isDarkMode, handleLogin, loginEmail, setLoginEmail, loginPassword, setLoginPassword }) => (
-  <div className={`flex flex-col items-center justify-center min-h-screen p-8 text-center space-y-8 animate-in fade-in duration-700 ${isDarkMode ? 'text-indigo-100' : 'text-slate-800'}`}>
-    <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-4 border shadow-xl ${isDarkMode ? 'bg-white/10 border-white/20' : 'bg-white/40 border-white/60'}`}>
-      <span className="text-4xl">💭</span>
-    </div>
-    <div>
-      <h1 className="text-3xl font-serif font-medium">One Sentence</h1>
-      <p className={`mt-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Capture your life, one day at a time.</p>
-    </div>
-    
-    <form onSubmit={handleLogin} className="w-full max-w-xs space-y-4">
-      <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
-          <Mail size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
-          <input 
-              type="email" 
-              placeholder="Email Address" 
+const AuthView = ({
+  isDarkMode,
+  authMode,
+  setAuthMode,
+  handleLogin,
+  handleSignUp,
+  handleResetPassword,
+  handleGoogleLogin,
+  loginEmail,
+  setLoginEmail,
+  loginPassword,
+  setLoginPassword,
+  signupName,
+  setSignupName,
+  signupEmail,
+  setSignupEmail,
+  signupPassword,
+  setSignupPassword,
+  authMessage,
+  isAuthBusy
+}) => {
+  const isSignUp = authMode === 'signup';
+
+  return (
+    <div className={`flex flex-col items-center justify-center min-h-screen p-8 text-center space-y-8 animate-in fade-in duration-700 ${isDarkMode ? 'text-indigo-100' : 'text-slate-800'}`}>
+      <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-4 border shadow-xl ${isDarkMode ? 'bg-white/10 border-white/20' : 'bg-white/40 border-white/60'}`}>
+        <span className="text-4xl">💭</span>
+      </div>
+      <div>
+        <h1 className="text-3xl font-serif font-medium">One Sentence</h1>
+        <p className={`mt-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Capture your life, one day at a time.</p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleGoogleLogin}
+        disabled={isAuthBusy}
+        className={`w-full max-w-xs py-3 rounded-2xl border flex items-center justify-center space-x-3 font-medium transition-colors ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'border-white/10 bg-white/5 text-indigo-100 hover:bg-white/10' : 'border-white/60 bg-white/80 text-slate-700 hover:bg-white'}`}
+      >
+        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-700 text-sm font-bold">G</span>
+        <span>Continue with Google</span>
+      </button>
+
+      <div className={`w-full max-w-xs flex items-center justify-between rounded-2xl p-1 border ${isDarkMode ? 'border-white/10 bg-white/5' : 'border-white/50 bg-white/60'}`}>
+        <button
+          type="button"
+          onClick={() => setAuthMode('login')}
+          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${isSignUp ? (isDarkMode ? 'text-indigo-300' : 'text-slate-500') : (isDarkMode ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-900/50' : 'bg-white text-rose-500 shadow-md')}`}
+        >
+          Sign In
+        </button>
+        <button
+          type="button"
+          onClick={() => setAuthMode('signup')}
+          className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${isSignUp ? (isDarkMode ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-900/50' : 'bg-white text-rose-500 shadow-md') : (isDarkMode ? 'text-indigo-300' : 'text-slate-500')}`}
+        >
+          Sign Up
+        </button>
+      </div>
+
+      {authMessage && (
+        <div className={`text-sm ${authMessage.type === 'error' ? (isDarkMode ? 'text-rose-300' : 'text-rose-500') : (isDarkMode ? 'text-emerald-300' : 'text-emerald-600')}`}>
+          {authMessage.text}
+        </div>
+      )}
+
+      {isSignUp ? (
+        <form onSubmit={handleSignUp} className="w-full max-w-xs space-y-4">
+          <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
+            <User size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={signupName}
+              onChange={(e) => setSignupName(e.target.value)}
+              className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
+              required
+            />
+          </div>
+
+          <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
+            <Mail size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <input
+              type="email"
+              placeholder="Email Address"
+              value={signupEmail}
+              onChange={(e) => setSignupEmail(e.target.value)}
+              className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
+              required
+            />
+          </div>
+
+          <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
+            <Lock size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <input
+              type="password"
+              placeholder="Create Password"
+              value={signupPassword}
+              onChange={(e) => setSignupPassword(e.target.value)}
+              className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isAuthBusy}
+            className={`w-full py-4 rounded-2xl font-medium shadow-lg transition-all flex items-center justify-center space-x-2 ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-indigo-900/50' : 'bg-white/80 hover:bg-white text-rose-500 shadow-rose-200'}`}
+          >
+            <span>Create Account</span>
+            <ArrowRight size={18} />
+          </button>
+
+          <p className={`text-xs ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
+            Already have an account?{' '}
+            <button type="button" onClick={() => setAuthMode('login')} className={`font-semibold underline ${isDarkMode ? 'text-indigo-200' : 'text-rose-500'}`}>
+              Sign in instead
+            </button>
+          </p>
+        </form>
+      ) : (
+        <form onSubmit={handleLogin} className="w-full max-w-xs space-y-4">
+          <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
+            <Mail size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <input
+              type="email"
+              placeholder="Email Address"
               value={loginEmail}
               onChange={(e) => setLoginEmail(e.target.value)}
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
               required
-          />
-      </div>
+            />
+          </div>
 
-      <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
-          <Lock size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
-          <input 
-              type="password" 
-              placeholder="Password" 
+          <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
+            <Lock size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <input
+              type="password"
+              placeholder="Password"
               value={loginPassword}
               onChange={(e) => setLoginPassword(e.target.value)}
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
               required
-          />
-      </div>
+            />
+          </div>
 
-      <div className="text-right">
-          <button 
-              type="button" 
-              onClick={() => alert("Reset password link sent to your email.")} 
-              className={`text-xs font-medium ${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'}`}
-          >
+          <div className="text-right">
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={!loginEmail || isAuthBusy}
+              className={`text-xs font-medium ${isAuthBusy || !loginEmail ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'}`}
+            >
               Forgot Password?
-          </button>
-      </div>
+            </button>
+          </div>
 
-      <button 
-        type="submit"
-        className={`w-full py-4 rounded-2xl font-medium shadow-lg transition-all flex items-center justify-center space-x-2 ${isDarkMode ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-indigo-900/50' : 'bg-white/80 hover:bg-white text-rose-500 shadow-rose-200'}`}
-      >
-        <span>Begin Journaling</span>
-        <ArrowRight size={18} />
-      </button>
-    </form>
-  </div>
-);
+          <button
+            type="submit"
+            disabled={isAuthBusy}
+            className={`w-full py-4 rounded-2xl font-medium shadow-lg transition-all flex items-center justify-center space-x-2 ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-indigo-900/50' : 'bg-white/80 hover:bg-white text-rose-500 shadow-rose-200'}`}
+          >
+            <span>Begin Journaling</span>
+            <ArrowRight size={18} />
+          </button>
+
+          <p className={`text-xs ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
+            Need an account?{' '}
+            <button type="button" onClick={() => setAuthMode('signup')} className={`font-semibold underline ${isDarkMode ? 'text-indigo-200' : 'text-rose-500'}`}>
+              Sign up for free
+            </button>
+          </p>
+        </form>
+      )}
+    </div>
+  );
+};
 
 const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) => {
   // Logic
@@ -800,58 +934,242 @@ const App = () => {
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date())); 
   const [dailyPrompt, setDailyPrompt] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(false);
-  
-  // Auth Form State (Lifted up for stability, though subcomponents handle UI)
+
+  // Auth State
+  const [authMode, setAuthMode] = useState('login');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [isAuthBusy, setIsAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState(null);
 
   // Load data & settings
   useEffect(() => {
-    const savedEntries = localStorage.getItem('journal_entries');
-    if (savedEntries) setEntries(JSON.parse(savedEntries));
-    
     setDailyPrompt(PROMPTS[Math.floor(Math.random() * PROMPTS.length)]);
-    
     const savedTheme = localStorage.getItem('journal_theme');
     if (savedTheme === 'dark') setIsDarkMode(true);
-
-    const savedUser = localStorage.getItem('journal_user_v3'); 
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-      setView('dashboard');
-    } else {
-      setView('auth');
-    }
   }, []);
 
-  // Persistence
+  // Sync authentication state with Firebase
   useEffect(() => {
-    localStorage.setItem('journal_entries', JSON.stringify(entries));
-  }, [entries]);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Dreamer',
+          avatar: firebaseUser.photoURL,
+        });
+        setLoginEmail(firebaseUser.email || '');
+        setLoginPassword('');
+        setAuthMode('login');
+        setAuthMessage(null);
+        setView('dashboard');
+      } else {
+        setUser(null);
+        setEntries([]);
+        setAuthMode('login');
+        setLoginPassword('');
+        setView('auth');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Load entries when the authenticated user changes
+  useEffect(() => {
+    if (!user) return;
+    const storageKey = `journal_entries_${user.uid}`;
+    const savedEntries = localStorage.getItem(storageKey);
+
+    if (savedEntries) {
+      try {
+        setEntries(JSON.parse(savedEntries));
+      } catch (error) {
+        console.warn('Failed to parse saved entries', error);
+        setEntries([]);
+      }
+    } else {
+      setEntries([]);
+    }
+  }, [user]);
+
+  // Persist entries per user
+  useEffect(() => {
+    if (!user) return;
+    const storageKey = `journal_entries_${user.uid}`;
+    localStorage.setItem(storageKey, JSON.stringify(entries));
+  }, [entries, user]);
 
   useEffect(() => {
     localStorage.setItem('journal_theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // Auth Handlers
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (!loginEmail || !loginPassword) {
-        alert("Please enter both email and password.");
-        return;
+  const describeAuthError = (error) => {
+    const code = error?.code;
+    switch (code) {
+      case 'auth/email-already-in-use':
+        return 'That email is already registered. Try signing in instead.';
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/user-not-found':
+        return 'No account found with that email.';
+      case 'auth/wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'auth/weak-password':
+        return 'Password must be at least six characters long.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      case 'auth/user-disabled':
+        return 'This account has been disabled. Contact support if you need help.';
+      case 'auth/popup-closed-by-user':
+        return 'Popup closed before finishing sign-in.';
+      case 'auth/cancelled-popup-request':
+        return 'Another sign-in popup was cancelled. Please try again.';
+      case 'auth/account-exists-with-different-credential':
+        return 'That email is linked to another sign-in method. Try signing in with that provider instead.';
+      default:
+        return 'Something went wrong. Please try again.';
     }
-    const mockUser = { uid: '123', email: loginEmail, name: loginEmail.split('@')[0], avatar: null };
-    setUser(mockUser);
-    localStorage.setItem('journal_user_v3', JSON.stringify(mockUser));
-    setView('dashboard');
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setLoginEmail('');
-    setLoginPassword('');
-    localStorage.removeItem('journal_user_v3');
-    setView('auth');
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    const trimmedEmail = loginEmail.trim().toLowerCase();
+    const passwordValue = loginPassword.trim();
+
+    setAuthMessage(null);
+
+    if (!trimmedEmail || !passwordValue) {
+      setAuthMessage({ type: 'error', text: 'Enter your email and password to continue.' });
+      return;
+    }
+
+    setIsAuthBusy(true);
+    try {
+      await signInWithEmailAndPassword(auth, trimmedEmail, passwordValue);
+      setAuthMessage({ type: 'success', text: 'Signed in successfully.' });
+    } catch (error) {
+      setAuthMessage({ type: 'error', text: describeAuthError(error) });
+      console.error('Sign-in failed:', error);
+    } finally {
+      setIsAuthBusy(false);
+    }
+  };
+
+  const handleSignUp = async (e) => {
+    e.preventDefault();
+    const trimmedName = signupName.trim();
+    const trimmedEmail = signupEmail.trim().toLowerCase();
+    const passwordValue = signupPassword.trim();
+
+    setAuthMessage(null);
+
+    if (!trimmedName) {
+      setAuthMessage({ type: 'error', text: 'Please enter your name so we know how to greet you.' });
+      return;
+    }
+
+    if (!trimmedEmail) {
+      setAuthMessage({ type: 'error', text: 'Please enter a valid email address.' });
+      return;
+    }
+
+    if (passwordValue.length < 6) {
+      setAuthMessage({ type: 'error', text: 'Password must be at least six characters long.' });
+      return;
+    }
+
+    setIsAuthBusy(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, passwordValue);
+      if (trimmedName && userCredential.user) {
+        await updateProfile(userCredential.user, { displayName: trimmedName });
+      }
+
+      if (userCredential.user && !userCredential.user.emailVerified) {
+        await sendEmailVerification(userCredential.user);
+      }
+
+      setSignupName('');
+      setSignupEmail('');
+      setSignupPassword('');
+      setAuthMessage({ type: 'success', text: 'Account created! Check your inbox to verify your email.' });
+    } catch (error) {
+      setAuthMessage({ type: 'error', text: describeAuthError(error) });
+      console.error('Sign-up failed:', error);
+    } finally {
+      setIsAuthBusy(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const trimmedEmail = loginEmail.trim().toLowerCase();
+
+    setAuthMessage(null);
+
+    if (!trimmedEmail) {
+      setAuthMessage({ type: 'error', text: 'Add your email address above so we can send the reset link.' });
+      return;
+    }
+
+    setIsAuthBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, trimmedEmail);
+      setAuthMessage({ type: 'success', text: 'Reset link sent! Check your inbox.' });
+    } catch (error) {
+      setAuthMessage({ type: 'error', text: describeAuthError(error) });
+      console.error('Password reset failed:', error);
+    } finally {
+      setIsAuthBusy(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    if (isAuthBusy) return;
+    setAuthMessage(null);
+    setIsAuthBusy(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+
+      if (result.user && !result.user.emailVerified) {
+        await sendEmailVerification(result.user);
+      }
+
+      setAuthMessage({ type: 'success', text: 'Signed in with Google.' });
+    } catch (error) {
+      if (error?.code !== 'auth/popup-closed-by-user') {
+        setAuthMessage({ type: 'error', text: describeAuthError(error) });
+      }
+      console.error('Google sign-in failed:', error);
+    } finally {
+      setIsAuthBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (isAuthBusy) return;
+    const previousEmail = user?.email || '';
+    setIsAuthBusy(true);
+    try {
+      await signOut(auth);
+      if (previousEmail) setLoginEmail(previousEmail);
+      setSignupName('');
+      setSignupEmail('');
+      setSignupPassword('');
+      setEntries([]);
+      setAuthMessage({ type: 'success', text: 'Signed out safely. See you soon!' });
+    } catch (error) {
+      setAuthMessage({ type: 'error', text: 'Failed to sign out. Please try again.' });
+      console.error('Sign-out failed:', error);
+    } finally {
+      setIsAuthBusy(false);
+    }
   };
 
   if (view === 'loading') return null;
@@ -875,11 +1193,24 @@ const App = () => {
           {view === 'auth' && (
             <AuthView 
               isDarkMode={isDarkMode}
+              authMode={authMode}
+              setAuthMode={setAuthMode}
               handleLogin={handleLogin}
+              handleSignUp={handleSignUp}
+              handleResetPassword={handleResetPassword}
+              handleGoogleLogin={handleGoogleLogin}
               loginEmail={loginEmail}
               setLoginEmail={setLoginEmail}
               loginPassword={loginPassword}
               setLoginPassword={setLoginPassword}
+              signupName={signupName}
+              setSignupName={setSignupName}
+              signupEmail={signupEmail}
+              setSignupEmail={setSignupEmail}
+              signupPassword={signupPassword}
+              setSignupPassword={setSignupPassword}
+              authMessage={authMessage}
+              isAuthBusy={isAuthBusy}
             />
           )}
           {view === 'dashboard' && (
