@@ -100,6 +100,12 @@ const getDayName = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 };
 
+const getLastThirtyDaysEntries = (entries) => {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 29);
+  return entries.filter((entry) => new Date(entry.date) >= cutoff);
+};
+
 // --- Sub-Components (Defined outside App to prevent re-render bugs) ---
 
 const AuthView = ({
@@ -178,6 +184,7 @@ const AuthView = ({
               value={signupName}
               onChange={(e) => setSignupName(e.target.value)}
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
+              maxLength={24}
               required
             />
           </div>
@@ -289,13 +296,11 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
     let streak = 0;
     const sortedEntries = [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
     const today = formatDate(new Date());
-    const yesterday = formatDate(new Date(Date.now() - 86400000));
     const hasToday = sortedEntries.some(e => e.date === today);
-    const hasYesterday = sortedEntries.some(e => e.date === yesterday);
 
-    if (!hasToday && !hasYesterday) return 0;
+    if (!hasToday) return 0;
+
     let currentDate = new Date();
-    if (!hasToday) currentDate.setDate(currentDate.getDate() - 1);
 
     while (true) {
       const dateStr = formatDate(currentDate);
@@ -310,11 +315,10 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
   };
 
   const getMonthMood = () => {
-    const currentMonth = new Date().getMonth();
-    const monthEntries = entries.filter(e => new Date(e.date).getMonth() === currentMonth);
-    if (monthEntries.length === 0) return null;
+    const recentEntries = getLastThirtyDaysEntries(entries);
+    if (recentEntries.length === 0) return null;
     const counts = {};
-    monthEntries.forEach(e => counts[e.mood] = (counts[e.mood] || 0) + 1);
+    recentEntries.forEach(e => counts[e.mood] = (counts[e.mood] || 0) + 1);
     return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
   };
 
@@ -331,6 +335,15 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
     return template.replace("{name}", user?.name || "Dreamer");
   }, [user?.name]);
 
+  const todayDisplay = useMemo(() => {
+    return new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  }, []);
+
   return (
     <div className="space-y-6 pb-24 animate-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
@@ -339,10 +352,10 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
           <h2 className={`text-xl font-serif leading-tight ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>
             {welcomeMsg}
           </h2>
-          <p className={`text-sm mt-1 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{getDayName(new Date())}</p>
+          <p className={`text-sm mt-1 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{todayDisplay}</p>
         </div>
-        <button onClick={() => setView('list')} className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-700'}`}>
-          History &rarr;
+        <button onClick={() => setView('calendar')} className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-700'}`}>
+          Insights &rarr;
         </button>
       </div>
 
@@ -379,7 +392,7 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
         </div>
         <div className={`backdrop-blur-md rounded-3xl p-5 border flex flex-col items-center justify-center space-y-2 shadow-lg ${isDarkMode ? 'bg-white/5 border-white/10 shadow-indigo-900/10' : 'bg-white/40 border-white/40 shadow-rose-100'}`}>
           <span className="text-3xl">{commonMood || '—'}</span>
-          <span className={`text-xs text-center uppercase tracking-wide font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Month's Vibe</span>
+          <span className={`text-xs text-center uppercase tracking-wide font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>30-Day Vibe</span>
         </div>
       </div>
 
@@ -579,14 +592,9 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
       return MOODS.find(m => m.emoji === topEmoji);
     };
 
-    // 1. Last Month
-    const lastMonthDate = new Date();
-    lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
-    const lastMonthEntries = entries.filter(e => {
-       const d = new Date(e.date);
-       return d.getMonth() === lastMonthDate.getMonth() && d.getFullYear() === lastMonthDate.getFullYear();
-    });
-    const lastMonthVibe = getDominantMood(lastMonthEntries);
+     // 1. Last 30 Days
+     const recentEntries = getLastThirtyDaysEntries(entries);
+     const lastMonthVibe = getDominantMood(recentEntries);
     // ---------------------------
 
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -595,7 +603,7 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
     return (
       <div className="space-y-6 pb-24">
          <div className="flex items-center justify-between">
-           <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>History</h2>
+           <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>Insights</h2>
            <div className="flex space-x-4">
              <button onClick={() => changeMonth(-1)} className={`p-1 rounded-full ${isDarkMode ? 'hover:bg-indigo-800 text-indigo-300' : 'hover:bg-white/50 text-slate-600'}`}><ChevronLeft size={20} /></button>
              <span className={`font-medium w-24 text-center ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>
@@ -646,14 +654,14 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
 
          {/* --- INSIGHTS SECTION --- */}
          <div className="grid grid-cols-1 gap-3 mt-4">
-            {/* Last Month Card */}
+            {/* Last 30 Days Card */}
             <div className={`p-4 rounded-2xl border backdrop-blur-md flex items-center justify-between ${isDarkMode ? 'bg-white/5 border-white/10 shadow-lg' : 'bg-white/40 border-white/50 shadow-rose-100'}`}>
                 <div>
-                    <h4 className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Last Month</h4>
+                <h4 className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Last 30 Days</h4>
                     <p className={`text-sm font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>
                         {lastMonthVibe 
-                            ? `You were mostly ${lastMonthVibe.label}` 
-                            : "No data recorded"}
+                          ? `You were mostly ${lastMonthVibe.label} ${lastMonthVibe.emoji}` 
+                    : "No data recorded"}
                     </p>
                 </div>
                 <div className="text-2xl">{lastMonthVibe?.emoji || '—'}</div>
@@ -689,7 +697,16 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout })
     const fileInputRef = useRef(null);
 
     const handleSaveProfile = () => {
-        const updatedUser = { ...user, name: editName };
+      const trimmedName = editName.trim();
+      if (trimmedName.length === 0) {
+        alert('Please enter a name.');
+        return;
+      }
+      if (trimmedName.length > 24) {
+        alert('Name must be 24 characters or fewer.');
+        return;
+      }
+      const updatedUser = { ...user, name: trimmedName };
         setUser(updatedUser);
         localStorage.setItem('journal_user_v3', JSON.stringify(updatedUser));
         setIsEditing(false);
@@ -766,13 +783,13 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout })
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
           {/* Contact Developer */}
-           <button 
-            onClick={() => window.location.href = "mailto:hello@developer.com"}
-            className={`w-full p-4 flex items-center space-x-3 transition-colors ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
+          <a
+            href="mailto:hello@walruscreativeworks.com"
+            className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
           >
             <Mail size={20} />
             <span className="font-medium">Contact Developer</span>
-          </button>
+          </a>
 
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
@@ -780,6 +797,20 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout })
             <LogOut size={20} />
             <span className="font-medium">Log Out</span>
           </button>
+        </div>
+
+        <div className="text-center text-xs mt-4">
+          <a
+            href="https://walruscreativeworks.com/one-sentence-privacy-policy/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'} underline`}
+          >
+            Privacy Policy
+          </a>
+          <p className={`${isDarkMode ? 'text-indigo-300/70' : 'text-slate-400'} text-[10px] mt-2 leading-snug`}>
+            Your journal entries are completely private. Only you can access your entries. Not even the app creator or admins can view, read, or open them. The only information we can see is your email address and the name you provided when signing up, nothing more. This space is designed to be safe, secure, and just for you.
+          </p>
         </div>
       </div>
     );
@@ -945,6 +976,11 @@ const App = () => {
   const [isAuthBusy, setIsAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState(null);
 
+  useEffect(() => {
+    console.log('🟢 Current view:', view);
+    console.log('🟢 Current user:', user ? user.email : 'No user');
+  }, [view]);
+
   // Load data & settings
   useEffect(() => {
     setDailyPrompt(PROMPTS[Math.floor(Math.random() * PROMPTS.length)]);
@@ -954,7 +990,12 @@ const App = () => {
 
   // Sync authentication state with Firebase
   useEffect(() => {
+    console.log('Setting up Firebase auth listener...');
+    let authFired = false;
+    
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log('Firebase auth state changed:', firebaseUser ? 'User logged in' : 'No user');
+      authFired = true;
       if (firebaseUser) {
         setUser({
           uid: firebaseUser.uid,
@@ -974,9 +1015,24 @@ const App = () => {
         setLoginPassword('');
         setView('auth');
       }
+    }, (error) => {
+      console.error('Firebase auth error:', error);
+      authFired = true;
+      setView('auth');
     });
 
-    return () => unsubscribe();
+    // Fallback: if auth doesn't fire within 3 seconds, assume no user and show auth
+    const timeout = setTimeout(() => {
+      if (!authFired) {
+        console.warn('Firebase auth listener timeout - forcing auth view');
+        setView('auth');
+      }
+    }, 3000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   // Load entries when the authenticated user changes
@@ -1062,6 +1118,7 @@ const App = () => {
 
   const handleSignUp = async (e) => {
     e.preventDefault();
+    console.log('Sign-up clicked');
     const trimmedName = signupName.trim();
     const trimmedEmail = signupEmail.trim().toLowerCase();
     const passwordValue = signupPassword.trim();
@@ -1070,6 +1127,11 @@ const App = () => {
 
     if (!trimmedName) {
       setAuthMessage({ type: 'error', text: 'Please enter your name so we know how to greet you.' });
+      return;
+    }
+
+    if (trimmedName.length > 24) {
+      setAuthMessage({ type: 'error', text: 'Name must be 24 characters or fewer.' });
       return;
     }
 
@@ -1083,9 +1145,11 @@ const App = () => {
       return;
     }
 
+    console.log('Creating account for:', trimmedEmail);
     setIsAuthBusy(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, passwordValue);
+      console.log('Account created:', userCredential.user.uid);
       if (trimmedName && userCredential.user) {
         await updateProfile(userCredential.user, { displayName: trimmedName });
       }
@@ -1099,8 +1163,8 @@ const App = () => {
       setSignupPassword('');
       setAuthMessage({ type: 'success', text: 'Account created! Check your inbox to verify your email.' });
     } catch (error) {
+      console.error('Sign-up error:', error);
       setAuthMessage({ type: 'error', text: describeAuthError(error) });
-      console.error('Sign-up failed:', error);
     } finally {
       setIsAuthBusy(false);
     }

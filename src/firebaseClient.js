@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -10,6 +11,22 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+console.log('Firebase config:', {
+  apiKey: firebaseConfig.apiKey ? '✓' : '✗',
+  authDomain: firebaseConfig.authDomain ? '✓' : '✗',
+  projectId: firebaseConfig.projectId ? '✓' : '✗',
+  storageBucket: firebaseConfig.storageBucket ? '✓' : '✗',
+  messagingSenderId: firebaseConfig.messagingSenderId ? '✓' : '✗',
+  appId: firebaseConfig.appId ? '✓' : '✗',
+});
+
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// Use memory-only persistence for iOS native to prevent WebView hangs
+export const auth = Capacitor.isNativePlatform()
+  ? initializeAuth(app, {
+      persistence: indexedDBLocalPersistence
+    })
+  : getAuth(app);
+
+console.log('Auth initialized for platform:', Capacitor.getPlatform());
