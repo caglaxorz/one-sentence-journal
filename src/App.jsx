@@ -36,6 +36,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
+import { AppLauncher } from '@capacitor/app-launcher';
 
 // --- Constants & Config ---
 
@@ -783,13 +784,25 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout })
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
           {/* Contact Developer */}
-          <a
-            href="mailto:hello@walruscreativeworks.com"
+          <button
+            onClick={async () => {
+              try {
+                const { completed } = await AppLauncher.openUrl({ 
+                  url: 'mailto:hello@walruscreativeworks.com' 
+                });
+                if (!completed) {
+                  alert('Email: hello@walruscreativeworks.com\n\nMail app not available in simulator. This will work on a real device!');
+                }
+              } catch (error) {
+                console.error('Failed to open email:', error);
+                alert('Email: hello@walruscreativeworks.com\n\nMail app not available in simulator. This will work on a real device!');
+              }
+            }}
             className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
           >
             <Mail size={20} />
             <span className="font-medium">Contact Developer</span>
-          </a>
+          </button>
 
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
@@ -1253,7 +1266,7 @@ const App = () => {
 
       <div className="max-w-md mx-auto min-h-screen relative shadow-2xl overflow-hidden bg-white/5 backdrop-blur-[2px]">
         
-        <main className="h-full overflow-y-auto px-6 pt-8 scrollbar-hide relative z-10">
+        <main className="h-full overflow-y-auto px-6 pt-16 scrollbar-hide relative z-10">
           {view === 'auth' && (
             <AuthView 
               isDarkMode={isDarkMode}
