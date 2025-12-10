@@ -30,3 +30,7 @@ ios/App/App/capacitor.config.json
 ios/App/Podfile.lock
 android/app/src/main/assets/public
 android/app/src/main/res/values/strings.xml
+
+# Firebase Config (contains API keys)
+ios/App/GoogleService-Info.plist
+android/app/google-services.json
