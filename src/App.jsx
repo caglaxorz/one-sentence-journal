@@ -35,8 +35,11 @@ import {
   sendEmailVerification,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from 'firebase/auth';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { Capacitor } from '@capacitor/core';
 
 // --- Constants & Config ---
 
@@ -142,15 +145,18 @@ const AuthView = ({
         <p className={`mt-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Capture your life, one day at a time.</p>
       </div>
 
-      <button
-        type="button"
-        onClick={handleGoogleLogin}
-        disabled={isAuthBusy}
-        className={`w-full max-w-xs py-3 rounded-2xl border flex items-center justify-center space-x-3 font-medium transition-colors ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'border-white/10 bg-white/5 text-indigo-100 hover:bg-white/10' : 'border-white/60 bg-white/80 text-slate-700 hover:bg-white'}`}
-      >
-        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-700 text-sm font-bold">G</span>
-        <span>Continue with Google</span>
-      </button>
+      {/* Hide Google Sign-In on iOS native - not fully configured yet */}
+      {!Capacitor.isNativePlatform() && (
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={isAuthBusy}
+          className={`w-full max-w-xs py-3 rounded-2xl border flex items-center justify-center space-x-3 font-medium transition-colors ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'border-white/10 bg-white/5 text-indigo-100 hover:bg-white/10' : 'border-white/60 bg-white/80 text-slate-700 hover:bg-white'}`}
+        >
+          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-700 text-sm font-bold">G</span>
+          <span>Continue with Google</span>
+        </button>
+      )}
 
       <div className={`w-full max-w-xs flex items-center justify-between rounded-2xl p-1 border ${isDarkMode ? 'border-white/10 bg-white/5' : 'border-white/50 bg-white/60'}`}>
         <button
@@ -1006,6 +1012,20 @@ const App = () => {
     console.log('Setting up Firebase auth listener...');
     let authFired = false;
     
+    // Check for redirect result first (Google Sign-In on iOS)
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          console.log('Google Sign-In redirect successful');
+          if (!result.user.emailVerified) {
+            sendEmailVerification(result.user).catch(console.error);
+          }
+        }
+      })
+      .catch((error) => {
+        console.error('Redirect result error:', error);
+      });
+    
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       console.log('Firebase auth state changed:', firebaseUser ? 'User logged in' : 'No user');
       authFired = true;
@@ -1212,13 +1232,18 @@ const App = () => {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
-
-      if (result.user && !result.user.emailVerified) {
-        await sendEmailVerification(result.user);
+      
+      // Use redirect flow on native iOS, popup on web
+      if (Capacitor.isNativePlatform()) {
+        await signInWithRedirect(auth, provider);
+        // User will be redirected away, auth state will update on return
+      } else {
+        const result = await signInWithPopup(auth, provider);
+        if (result.user && !result.user.emailVerified) {
+          await sendEmailVerification(result.user);
+        }
+        setAuthMessage({ type: 'success', text: 'Signed in with Google.' });
       }
-
-      setAuthMessage({ type: 'success', text: 'Signed in with Google.' });
     } catch (error) {
       if (error?.code !== 'auth/popup-closed-by-user') {
         setAuthMessage({ type: 'error', text: describeAuthError(error) });
