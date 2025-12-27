@@ -2044,7 +2044,7 @@ const App = () => {
 
       <div className="max-w-md mx-auto min-h-screen relative shadow-2xl overflow-hidden bg-white/5 backdrop-blur-[2px]">
         
-        <main className="h-full overflow-y-auto px-6 pt-16 scrollbar-hide relative z-10">
+        <main className="h-full overflow-y-auto px-6 pt-16 pb-28 scrollbar-hide relative z-10">
           {view === 'auth' && (
             <AuthView 
               isDarkMode={isDarkMode}
@@ -2127,35 +2127,36 @@ const App = () => {
             />
           )}
         </main>
-
-        {['dashboard', 'calendar', 'list', 'profile'].includes(view) && (
-          <nav className={`fixed bottom-0 left-0 right-0 h-20 shadow-xl flex items-center justify-between px-8 border-t z-50 transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/95 border-white/10 text-indigo-300' : 'bg-white/95 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
-            
-            <button onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-              <Home size={24} strokeWidth={view === 'dashboard' ? 2.5 : 2} />
-            </button>
-
-            <button onClick={() => { Haptics.selectionChanged(); setView('list'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-              <List size={24} strokeWidth={view === 'list' ? 2.5 : 2} />
-            </button>
-
-            <button 
-              onClick={() => { Haptics.selectionChanged(); setSelectedDate(formatDate(new Date())); setView('write'); }}
-              className={`w-14 h-14 rounded-full shadow-lg transform -translate-y-8 hover:scale-110 transition-all flex items-center justify-center ${isDarkMode ? 'bg-indigo-500 text-white shadow-indigo-500/50' : 'bg-gradient-to-tr from-rose-400 to-pink-500 text-white shadow-rose-300/50'}`}
-            >
-              <Plus size={28} strokeWidth={2.5} />
-            </button>
-
-            <button onClick={() => { Haptics.selectionChanged(); setView('calendar'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-              <CalendarIcon size={24} strokeWidth={view === 'calendar' ? 2.5 : 2} />
-            </button>
-
-            <button onClick={() => { Haptics.selectionChanged(); setView('profile'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-              <User size={24} strokeWidth={view === 'profile' ? 2.5 : 2} />
-            </button>
-          </nav>
-        )}
       </div>
+
+      {/* FROZEN BOTTOM MENU - Always visible, like Excel frozen row */}
+      {['dashboard', 'calendar', 'list', 'profile'].includes(view) && (
+        <nav className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md h-20 shadow-2xl flex items-center justify-between px-8 border-t z-[9999] transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/98 border-white/10 text-indigo-300' : 'bg-white/98 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
+          
+          <button onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <Home size={24} strokeWidth={view === 'dashboard' ? 2.5 : 2} />
+          </button>
+
+          <button onClick={() => { Haptics.selectionChanged(); setView('list'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <List size={24} strokeWidth={view === 'list' ? 2.5 : 2} />
+          </button>
+
+          <button 
+            onClick={() => { Haptics.selectionChanged(); setSelectedDate(formatDate(new Date())); setView('write'); }}
+            className={`w-14 h-14 rounded-full shadow-lg transform -translate-y-8 hover:scale-110 transition-all flex items-center justify-center ${isDarkMode ? 'bg-indigo-500 text-white shadow-indigo-500/50' : 'bg-gradient-to-tr from-rose-400 to-pink-500 text-white shadow-rose-300/50'}`}
+          >
+            <Plus size={28} strokeWidth={2.5} />
+          </button>
+
+          <button onClick={() => { Haptics.selectionChanged(); setView('calendar'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <CalendarIcon size={24} strokeWidth={view === 'calendar' ? 2.5 : 2} />
+          </button>
+
+          <button onClick={() => { Haptics.selectionChanged(); setView('profile'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <User size={24} strokeWidth={view === 'profile' ? 2.5 : 2} />
+          </button>
+        </nav>
+      )}
       
       {/* Palette Modal */}
       <PaletteModal
