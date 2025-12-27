@@ -650,7 +650,7 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
           </p>
 
           {/* Extras */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 mb-3">
             <button 
               onClick={() => setMattered(!mattered)}
               className={`flex-1 p-3 rounded-2xl border flex items-center justify-center space-x-2 transition-colors ${mattered ? 'border-amber-300 bg-amber-50 text-amber-600' : (isDarkMode ? 'border-indigo-800 text-indigo-400' : 'border-white/50 bg-white/30 text-slate-500')}`}
@@ -659,17 +659,17 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
               <span className="text-sm font-medium">This entry mattered</span>
             </button>
           </div>
-        </div>
 
-        {/* Save Button */}
-        <div className={`absolute bottom-6 left-6 right-6 p-2 rounded-3xl ${isDarkMode ? 'bg-slate-900/80' : 'bg-white/60'} backdrop-blur-md`}>
-           <button 
+          {/* Save Button */}
+          <div className={`p-2 rounded-3xl ${isDarkMode ? 'bg-slate-900/80' : 'bg-white/60'} backdrop-blur-md`}>
+            <button 
             onClick={handleSave}
             disabled={!text || !mood || saving}
             className={`w-full py-3 rounded-2xl font-medium transition-colors ${text && mood && !saving ? (isDarkMode ? 'bg-indigo-500 text-white' : 'bg-rose-400 text-white shadow-md') : (isDarkMode ? 'bg-indigo-900/50 text-indigo-500/50' : 'bg-white/80 text-slate-400 shadow-sm')}`}
           >
             {saving ? 'Saving...' : 'Save Entry'}
           </button>
+        </div>
         </div>
       </div>
     );
@@ -1100,11 +1100,11 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           </div>
         )}
 
-        {/* Danger Zone */}
+        {/* Account Management */}
         <div className={`p-6 rounded-3xl border shadow-lg ${isDarkMode ? 'bg-red-900/20 border-red-700/50' : 'bg-red-50/40 shadow-red-100 border-red-200'}`}>
-          <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>Danger Zone</h3>
+          <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>Account Management</h3>
           <p className={`text-xs mb-4 ${isDarkMode ? 'text-red-200/70' : 'text-red-600/70'}`}>
-            Permanently delete your account and all journal entries. This action cannot be undone.
+            Delete your account or all your journal data. These actions cannot be undone.
           </p>
           
           {!showDeleteAccount ? (
@@ -1294,7 +1294,7 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
               onClick={() => setShowMatteredOnly(!showMatteredOnly)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${showMatteredOnly ? 'bg-rose-400 text-white shadow-md' : (isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-600')}`}
             >
-              ⭐ Core Memories {showMatteredOnly && '✓'}
+              ⭐ Core {showMatteredOnly && '✓'}
             </button>
             
             {MOOD_PALETTES.emotions.map(moodObj => (
@@ -2266,13 +2266,13 @@ const App = () => {
 
       {/* FROZEN BOTTOM MENU - Always visible, like Excel frozen row */}
       {['dashboard', 'calendar', 'list', 'profile'].includes(view) && (
-        <nav className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md h-20 shadow-2xl flex items-center justify-between px-8 border-t z-[9999] transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/98 border-white/10 text-indigo-300' : 'bg-white/98 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
+        <nav className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md h-20 shadow-2xl flex items-center justify-center justify-between px-8 border-t z-[9999] transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/98 border-white/10 text-indigo-300' : 'bg-white/98 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
           
-          <button onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+          <button onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} className={`p-2 flex items-center justify-center ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
             <Home size={24} strokeWidth={view === 'dashboard' ? 2.5 : 2} />
           </button>
 
-          <button onClick={() => { Haptics.selectionChanged(); setView('list'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+          <button onClick={() => { Haptics.selectionChanged(); setView('list'); }} className={`p-2 flex items-center justify-center ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
             <List size={24} strokeWidth={view === 'list' ? 2.5 : 2} />
           </button>
 
@@ -2283,11 +2283,11 @@ const App = () => {
             <Plus size={28} strokeWidth={2.5} />
           </button>
 
-          <button onClick={() => { Haptics.selectionChanged(); setView('calendar'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+          <button onClick={() => { Haptics.selectionChanged(); setView('calendar'); }} className={`p-2 flex items-center justify-center ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
             <CalendarIcon size={24} strokeWidth={view === 'calendar' ? 2.5 : 2} />
           </button>
 
-          <button onClick={() => { Haptics.selectionChanged(); setView('profile'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+          <button onClick={() => { Haptics.selectionChanged(); setView('profile'); }} className={`p-2 flex items-center justify-center ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
             <User size={24} strokeWidth={view === 'profile' ? 2.5 : 2} />
           </button>
         </nav>
