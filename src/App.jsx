@@ -38,6 +38,10 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithCredential,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+  deleteUser,
 } from 'firebase/auth';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { Capacitor } from '@capacitor/core';
@@ -910,6 +914,12 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
 const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, selectedPalette, setSelectedPalette, customPalette, setCustomPalette }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(user?.name || '');
+    const [showChangePassword, setShowChangePassword] = useState(false);
+    const [oldPassword, setOldPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+    const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
     const fileInputRef = useRef(null);
 
     const handleSaveProfile = () => {
@@ -939,6 +949,99 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
             };
             reader.readAsDataURL(file);
         }
+    };
+
+    const handleSendPasswordResetEmail = async () => {
+      try {
+        await sendPasswordResetEmail(auth, user.email);
+        alert('Password reset link sent to your email!');
+        setShowChangePassword(false);
+      } catch (error) {
+        console.error('Failed to send password reset:', error);
+        alert('Failed to send password reset email. Please try again.');
+      }
+    };
+
+    const handleChangePassword = async (e) => {
+      e.preventDefault();
+      
+      if (newPassword.length < 6) {
+        alert('New password must be at least 6 characters long.');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        alert('New passwords do not match.');
+        return;
+      }
+
+      try {
+        const currentUser = auth.currentUser;
+        const credential = EmailAuthProvider.credential(user.email, oldPassword);
+        
+        // Reauthenticate user
+        await reauthenticateWithCredential(currentUser, credential);
+        
+        // Update password
+        await updatePassword(currentUser, newPassword);
+        
+        alert('Password changed successfully!');
+        setShowChangePassword(false);
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } catch (error) {
+        console.error('Failed to change password:', error);
+        if (error.code === 'auth/wrong-password') {
+          alert('Current password is incorrect.');
+        } else if (error.code === 'auth/requires-recent-login') {
+          alert('For security, please log out and log back in before changing your password.');
+        } else {
+          alert('Failed to change password. Please try again.');
+        }
+      }
+    };
+
+    const handleDeleteAllData = async () => {
+      if (deleteConfirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+        alert('Email does not match. Please enter your email correctly to confirm.');
+        return;
+      }
+
+      const finalConfirm = window.confirm(
+        '⚠️ FINAL WARNING ⚠️\n\nThis will permanently delete:\n• All your journal entries\n• Your account\n• All associated data\n\nTHIS CANNOT BE UNDONE.\n\nAre you absolutely sure?'
+      );
+
+      if (!finalConfirm) {
+        return;
+      }
+
+      try {
+        const currentUser = auth.currentUser;
+        
+        // Delete user account (this will also trigger Firestore rules to prevent access)
+        await deleteUser(currentUser);
+        
+        alert('Your account and all data have been permanently deleted.');
+        
+        // Clear local data
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('journal_entries_') || key.startsWith('journal_user_'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        
+      } catch (error) {
+        console.error('Failed to delete account:', error);
+        if (error.code === 'auth/requires-recent-login') {
+          alert('For security, please log out and log back in before deleting your account.');
+        } else {
+          alert('Failed to delete account. Please contact support at hello@walruscreativeworks.com');
+        }
+      }
     };
 
     return (
@@ -998,6 +1101,17 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
+          {/* Change Password */}
+          <button
+            onClick={() => setShowChangePassword(!showChangePassword)}
+            className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
+          >
+            <Lock size={20} />
+            <span className="font-medium">Change Password</span>
+          </button>
+
+          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
+
           {/* Contact Developer */}
           <button
             onClick={async () => {
@@ -1021,6 +1135,135 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
             <LogOut size={20} />
             <span className="font-medium">Log Out</span>
           </button>
+        </div>
+
+        {/* Change Password Modal */}
+        {showChangePassword && (
+          <div className={`p-6 rounded-3xl border shadow-lg ${isDarkMode ? 'bg-indigo-900/30 border-indigo-700' : 'bg-white/40 shadow-rose-100 border-white/40'}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-indigo-100' : 'text-slate-800'}`}>Change Password</h3>
+              <button onClick={() => setShowChangePassword(false)} className={isDarkMode ? 'text-indigo-300' : 'text-slate-500'}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className={`text-xs font-medium ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Current Password</label>
+                <input
+                  type="password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  required
+                  className={`w-full mt-1 px-4 py-2 rounded-xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/80 border-white/60 text-slate-800'} focus:outline-none focus:ring-2 ${isDarkMode ? 'focus:ring-indigo-500' : 'focus:ring-rose-300'}`}
+                />
+              </div>
+              
+              <div>
+                <label className={`text-xs font-medium ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className={`w-full mt-1 px-4 py-2 rounded-xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/80 border-white/60 text-slate-800'} focus:outline-none focus:ring-2 ${isDarkMode ? 'focus:ring-indigo-500' : 'focus:ring-rose-300'}`}
+                />
+              </div>
+              
+              <div>
+                <label className={`text-xs font-medium ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className={`w-full mt-1 px-4 py-2 rounded-xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/80 border-white/60 text-slate-800'} focus:outline-none focus:ring-2 ${isDarkMode ? 'focus:ring-indigo-500' : 'focus:ring-rose-300'}`}
+                />
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  type="submit"
+                  className={`flex-1 py-2 rounded-xl font-medium transition-colors ${isDarkMode ? 'bg-indigo-500 hover:bg-indigo-600 text-white' : 'bg-rose-500 hover:bg-rose-600 text-white'}`}
+                >
+                  Change Password
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendPasswordResetEmail}
+                  className={`flex-1 py-2 rounded-xl font-medium border transition-colors ${isDarkMode ? 'border-indigo-400 text-indigo-300 hover:bg-white/5' : 'border-rose-300 text-rose-600 hover:bg-rose-50'}`}
+                >
+                  Email Reset Link
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Danger Zone */}
+        <div className={`p-6 rounded-3xl border shadow-lg ${isDarkMode ? 'bg-red-900/20 border-red-700/50' : 'bg-red-50/40 shadow-red-100 border-red-200'}`}>
+          <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>Danger Zone</h3>
+          <p className={`text-xs mb-4 ${isDarkMode ? 'text-red-200/70' : 'text-red-600/70'}`}>
+            Permanently delete your account and all journal entries. This action cannot be undone.
+          </p>
+          
+          {!showDeleteAccount ? (
+            <button
+              onClick={() => setShowDeleteAccount(true)}
+              className={`w-full py-2 rounded-xl font-medium border-2 transition-colors ${isDarkMode ? 'border-red-500 text-red-400 hover:bg-red-500/20' : 'border-red-500 text-red-600 hover:bg-red-100'}`}
+            >
+              Delete All Data
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-red-900/30' : 'bg-red-100/60'}`}>
+                <p className={`text-xs font-semibold ${isDarkMode ? 'text-red-200' : 'text-red-800'}`}>
+                  ⚠️ This will permanently delete:
+                </p>
+                <ul className={`text-xs mt-2 space-y-1 ${isDarkMode ? 'text-red-300/80' : 'text-red-700/80'}`}>
+                  <li>• All your journal entries</li>
+                  <li>• Your account</li>
+                  <li>• All associated data</li>
+                </ul>
+                <p className={`text-xs font-bold mt-2 ${isDarkMode ? 'text-red-200' : 'text-red-800'}`}>
+                  THIS CANNOT BE UNDONE!
+                </p>
+              </div>
+              
+              <div>
+                <label className={`text-xs font-medium ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
+                  Type your email to confirm: <span className="font-bold">{user?.email}</span>
+                </label>
+                <input
+                  type="email"
+                  value={deleteConfirmEmail}
+                  onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className={`w-full mt-1 px-4 py-2 rounded-xl border ${isDarkMode ? 'bg-white/5 border-red-700 text-white' : 'bg-white border-red-300 text-slate-800'} focus:outline-none focus:ring-2 focus:ring-red-500`}
+                />
+              </div>
+              
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleDeleteAllData}
+                  className="flex-1 py-2 rounded-xl font-medium bg-red-600 hover:bg-red-700 text-white transition-colors"
+                >
+                  Yes, Delete Everything
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDeleteAccount(false);
+                    setDeleteConfirmEmail('');
+                  }}
+                  className={`flex-1 py-2 rounded-xl font-medium border transition-colors ${isDarkMode ? 'border-white/20 text-indigo-300 hover:bg-white/5' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="text-center text-xs mt-4">
@@ -1226,7 +1469,14 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
                   </div>
                   {entry.mattered && <Star size={14} className="text-amber-400" fill="currentColor" />}
                 </div>
-                <p className={`text-sm font-serif italic truncate ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{entry.text}</p>
+                <div className="flex items-start space-x-3">
+                  <p className={`flex-1 text-sm font-serif italic truncate ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{entry.text}</p>
+                  {entry.photo && (
+                    <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/20">
+                      <img src={entry.photo} alt="Memory" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
