@@ -538,7 +538,7 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
     const [text, setText] = useState('');
     const [mood, setMood] = useState(null);
     const [mattered, setMattered] = useState(false);
-    const [saving, setSaving] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Helpers
     const getEntryForDate = (date) => entries.find(e => e.date === date);
@@ -558,6 +558,9 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
     }, [entryDate]);
 
     const handleSave = async () => {
+      // Prevent double-clicks
+      if (isSaving) return;
+      
       if (!mood) {
         alert("Please select a mood first");
         return;
@@ -568,7 +571,9 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
         return;
       }
       
-      setSaving(true);
+      // Immediate UI feedback
+      setIsSaving(true);
+      Haptics.impactLight();  // Tactile feedback
       
       try {
         const newEntry = {
@@ -577,16 +582,33 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
           mood,
           mattered,
           prompt: dailyPrompt,
-          createdAt: new Date().toISOString(), // Track actual creation time
+          createdAt: new Date().toISOString(),
         };
         
+        // Optimistic update - show entry immediately
+        const tempEntry = { ...newEntry, id: entryDate, timestamp: Date.now() };
+        setEntries(prev => [tempEntry, ...prev.filter(e => e.date !== entryDate)]);
+        
+        // Actual save to Firestore
         await saveEntry(user.uid, newEntry);
+        
+        // Success feedback
+        Haptics.notificationSuccess();
+        
+        // Delay navigation to show success animation
+        await new Promise(resolve => setTimeout(resolve, 300));
         setView('dashboard');
+        
       } catch (error) {
         logger.error('Failed to save entry:', error);
-        alert('Failed to save entry. Please try again.');
+        
+        // Rollback optimistic update
+        setEntries(prev => prev.filter(e => e.date !== entryDate));
+        
+        Haptics.notificationError();
+        alert('Failed to save entry. Please check your connection and try again.');
       } finally {
-        setSaving(false);
+        setIsSaving(false);
       }
     };
 
@@ -667,10 +689,10 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
           <div className={`p-2 rounded-3xl ${isDarkMode ? 'bg-slate-900/80' : 'bg-white/60'} backdrop-blur-md`}>
             <button 
             onClick={handleSave}
-            disabled={!text || !mood || saving}
-            className={`w-full py-3 rounded-2xl font-medium transition-colors ${text && mood && !saving ? (isDarkMode ? 'bg-indigo-500 text-white' : 'bg-rose-400 text-white shadow-md') : (isDarkMode ? 'bg-indigo-900/50 text-indigo-500/50' : 'bg-white/80 text-slate-400 shadow-sm')}`}
+            disabled={!text || !mood || isSaving}
+            className={`w-full py-3 rounded-2xl font-medium transition-colors ${text && mood && !isSaving ? (isDarkMode ? 'bg-indigo-500 text-white' : 'bg-rose-400 text-white shadow-md') : (isDarkMode ? 'bg-indigo-900/50 text-indigo-500/50' : 'bg-white/80 text-slate-400 shadow-sm')}`}
           >
-            {saving ? 'Saving...' : 'Save Entry'}
+            {isSaving ? 'Saving...' : 'Save Entry'}
           </button>
         </div>
         </div>
