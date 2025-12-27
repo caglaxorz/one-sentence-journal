@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
+import { logger } from './utils/logger';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,7 +13,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-console.log('Firebase config:', {
+logger.log('Firebase config:', {
   apiKey: firebaseConfig.apiKey ? '✓' : '✗',
   authDomain: firebaseConfig.authDomain ? '✓' : '✗',
   projectId: firebaseConfig.projectId ? '✓' : '✗',
@@ -30,9 +31,9 @@ export const db = getFirestore(app);
 if (Capacitor.isNativePlatform()) {
   enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
-      console.warn('Persistence failed: Multiple tabs open');
+      logger.warn('Persistence failed: Multiple tabs open');
     } else if (err.code === 'unimplemented') {
-      console.warn('Persistence not available in this browser');
+      logger.warn('Persistence not available in this browser');
     }
   });
 }
@@ -44,4 +45,4 @@ export const auth = Capacitor.isNativePlatform()
     })
   : getAuth(app);
 
-console.log('Auth initialized for platform:', Capacitor.getPlatform());
+logger.log('Auth initialized for platform:', Capacitor.getPlatform());

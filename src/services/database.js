@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebaseClient';
 import { sanitizeText } from '../utils/security';
+import { logger } from '../utils/logger';
 
 /**
  * Subscribe to real-time updates for user's journal entries
@@ -22,7 +23,7 @@ import { sanitizeText } from '../utils/security';
  */
 export const subscribeToEntries = (userId, callback) => {
   if (!userId) {
-    console.error('subscribeToEntries: userId is required');
+    logger.error('subscribeToEntries: userId is required');
     return () => {};
   }
 
@@ -45,7 +46,7 @@ export const subscribeToEntries = (userId, callback) => {
       callback(entries);
     },
     (error) => {
-      console.error('Error fetching entries:', error);
+      logger.error('Error fetching entries:', error);
       callback([]);
     }
   );
@@ -135,7 +136,7 @@ export const migrateLocalEntries = async (userId, entries) => {
       await saveEntry(userId, entry);
       successCount++;
     } catch (error) {
-      console.error('Failed to migrate entry:', entry.date, error);
+      logger.error('Failed to migrate entry:', entry.date, error);
       errorCount++;
     }
   }

@@ -26,6 +26,7 @@ import {
   Check
 } from 'lucide-react';
 import { auth } from './firebaseClient';
+import { logger } from './utils/logger';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -174,7 +175,7 @@ const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
         setRefreshing(false);
       }
     } catch (error) {
-      console.error('Error checking verification:', error);
+      logger.error('Error checking verification:', error);
       alert("Error checking verification status. Please reach out to hello@walruscreativeworks.com");
       setRefreshing(false);
     }
@@ -582,7 +583,7 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
         await saveEntry(user.uid, newEntry);
         setView('dashboard');
       } catch (error) {
-        console.error('Failed to save entry:', error);
+        logger.error('Failed to save entry:', error);
         alert('Failed to save entry. Please try again.');
       } finally {
         setSaving(false);
@@ -859,7 +860,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         alert('Password reset link sent to your email!');
         setShowChangePassword(false);
       } catch (error) {
-        console.error('Failed to send password reset:', error);
+        logger.error('Failed to send password reset:', error);
         alert('Failed to send password reset email. Please try again.');
       }
     };
@@ -893,7 +894,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         setNewPassword('');
         setConfirmPassword('');
       } catch (error) {
-        console.error('Failed to change password:', error);
+        logger.error('Failed to change password:', error);
         if (error.code === 'auth/wrong-password') {
           alert('Current password is incorrect.');
         } else if (error.code === 'auth/requires-recent-login') {
@@ -937,7 +938,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         keysToRemove.forEach(key => localStorage.removeItem(key));
         
       } catch (error) {
-        console.error('Failed to delete account:', error);
+        logger.error('Failed to delete account:', error);
         if (error.code === 'auth/requires-recent-login') {
           alert('For security, please log out and log back in before deleting your account.');
         } else {
@@ -988,7 +989,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         setView('dashboard');
         
       } catch (error) {
-        console.error('Failed to clear account data:', error);
+        logger.error('Failed to clear account data:', error);
         alert('Failed to clear account data. Please contact support at hello@walruscreativeworks.com');
       }
     };
@@ -1069,7 +1070,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
                   url: 'mailto:hello@walruscreativeworks.com' 
                 });
               } catch (error) {
-                console.error('Failed to open email:', error);
+                logger.error('Failed to open email:', error);
               }
             }}
             className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
@@ -1366,7 +1367,7 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
             const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
             await AppLauncher.openUrl({ url: dataUrl });
           } catch (error) {
-            console.error('Failed to open:', error);
+            logger.error('Failed to open:', error);
             alert("Unable to open export. Please try again.");
           }
         } else {
@@ -1895,8 +1896,8 @@ const App = () => {
   const authRateLimiterRef = useRef(new RateLimiter(5, 15 * 60 * 1000)); // 5 attempts per 15 minutes
 
   useEffect(() => {
-    console.log('🟢 Current view:', view);
-    console.log('🟢 Current user:', user ? user.email : 'No user');
+    logger.log('🟢 Current view:', view);
+    logger.log('🟢 Current user:', user ? user.email : 'No user');
   }, [view]);
 
   // Initialize GoogleAuth on iOS
@@ -1924,19 +1925,19 @@ const App = () => {
       try {
         setCustomPalette(JSON.parse(savedCustomPalette));
       } catch (e) {
-        console.error('Failed to parse custom palette:', e);
+        logger.error('Failed to parse custom palette:', e);
       }
     }
   }, []);
 
   // Sync authentication state with Firebase
   useEffect(() => {
-    console.log('Setting up Firebase auth listener...');
+    logger.log('Setting up Firebase auth listener...');
     let authFired = false;
     let unsubscribeEntries = null;
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('Firebase auth state changed:', firebaseUser ? 'User logged in' : 'No user');
+      logger.log('Firebase auth state changed:', firebaseUser ? 'User logged in' : 'No user');
       authFired = true;
       
       if (firebaseUser) {
@@ -1959,7 +1960,7 @@ const App = () => {
         
         // Subscribe to real-time Firestore updates
         unsubscribeEntries = subscribeToEntries(firebaseUser.uid, (entries) => {
-          console.log('Loaded', entries.length, 'entries from Firestore');
+          logger.log('Loaded', entries.length, 'entries from Firestore');
           setEntries(entries);
         });
         
@@ -1970,14 +1971,14 @@ const App = () => {
           try {
             const parsed = JSON.parse(localEntries);
             if (parsed.length > 0) {
-              console.log('Migrating', parsed.length, 'entries to Firestore...');
+              logger.log('Migrating', parsed.length, 'entries to Firestore...');
               const result = await migrateLocalEntries(firebaseUser.uid, parsed);
-              console.log('Migration complete:', result);
+              logger.log('Migration complete:', result);
               // Clear localStorage after successful migration
               localStorage.removeItem(storageKey);
             }
           } catch (error) {
-            console.error('Migration failed:', error);
+            logger.error('Migration failed:', error);
           }
         }
         
@@ -1998,7 +1999,7 @@ const App = () => {
         setView('auth');
       }
     }, (error) => {
-      console.error('Firebase auth error:', error);
+      logger.error('Firebase auth error:', error);
       authFired = true;
       setView('auth');
     });
@@ -2006,7 +2007,7 @@ const App = () => {
     // Fallback: if auth doesn't fire within 3 seconds, assume no user and show auth
     const timeout = setTimeout(() => {
       if (!authFired) {
-        console.warn('Firebase auth listener timeout - forcing auth view');
+        logger.warn('Firebase auth listener timeout - forcing auth view');
         setView('auth');
       }
     }, 3000);
@@ -2088,7 +2089,7 @@ const App = () => {
       setAuthMessage({ type: 'success', text: 'Signed in successfully.' });
     } catch (error) {
       setAuthMessage({ type: 'error', text: describeAuthError(error) });
-      console.error('Sign-in failed:', error);
+      logger.error('Sign-in failed:', error);
     } finally {
       setIsAuthBusy(false);
     }
@@ -2096,7 +2097,7 @@ const App = () => {
 
   const handleSignUp = async (e) => {
     e.preventDefault();
-    console.log('Sign-up clicked');
+    logger.log('Sign-up clicked');
     
     setAuthMessage(null);
 
@@ -2132,11 +2133,11 @@ const App = () => {
       return;
     }
 
-    console.log('Creating account for:', trimmedEmail);
+    logger.log('Creating account for:', trimmedEmail);
     setIsAuthBusy(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, passwordValue);
-      console.log('Account created:', userCredential.user.uid);
+      logger.log('Account created:', userCredential.user.uid);
       
       if (trimmedName && userCredential.user) {
         await updateProfile(userCredential.user, { displayName: trimmedName });
@@ -2154,7 +2155,7 @@ const App = () => {
       setSignupPassword('');
       setAuthMessage({ type: 'success', text: 'Account created! Check your inbox to verify your email.' });
     } catch (error) {
-      console.error('Sign-up error:', error);
+      logger.error('Sign-up error:', error);
       setAuthMessage({ type: 'error', text: describeAuthError(error) });
     } finally {
       setIsAuthBusy(false);
@@ -2177,7 +2178,7 @@ const App = () => {
       setAuthMessage({ type: 'success', text: 'Reset link sent! Check your inbox.' });
     } catch (error) {
       setAuthMessage({ type: 'error', text: describeAuthError(error) });
-      console.error('Password reset failed:', error);
+      logger.error('Password reset failed:', error);
     } finally {
       setIsAuthBusy(false);
     }
@@ -2211,7 +2212,7 @@ const App = () => {
       if (error?.code !== 'auth/popup-closed-by-user') {
         setAuthMessage({ type: 'error', text: describeAuthError(error) });
       }
-      console.error('Google sign-in failed:', error);
+      logger.error('Google sign-in failed:', error);
     } finally {
       setIsAuthBusy(false);
     }
@@ -2243,7 +2244,7 @@ const App = () => {
       setAuthMessage({ type: 'success', text: 'Signed out safely. See you soon!' });
     } catch (error) {
       setAuthMessage({ type: 'error', text: 'Failed to sign out. Please try again.' });
-      console.error('Sign-out failed:', error);
+      logger.error('Sign-out failed:', error);
     } finally {
       setIsAuthBusy(false);
     }
@@ -2255,7 +2256,7 @@ const App = () => {
         await sendEmailVerification(auth.currentUser);
         alert('Verification email sent! Please check your inbox.');
       } catch (error) {
-        console.error('Failed to send verification email:', error);
+        logger.error('Failed to send verification email:', error);
         alert('Failed to send verification email. Please try again later.');
       }
     }
