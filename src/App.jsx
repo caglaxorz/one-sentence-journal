@@ -48,6 +48,8 @@ import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { subscribeToEntries, saveEntry, deleteEntry, migrateLocalEntries } from './services/database';
+import { APP_CONSTANTS } from './config/constants';
+import { clearUserData } from './utils/storage';
 import { sanitizeText, validateName, validatePassword, validateEmail, RateLimiter } from './utils/security';
 import { db } from './firebaseClient';
 import { collection, getDocs, deleteDoc } from 'firebase/firestore';
@@ -135,7 +137,7 @@ const getDayName = (dateStr) => {
 
 const getLastThirtyDaysEntries = (entries) => {
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 29);
+  cutoff.setDate(cutoff.getDate() - (APP_CONSTANTS.STATS_WINDOW_DAYS - 1));
   return entries.filter((entry) => new Date(entry.date) >= cutoff);
 };
 
@@ -950,14 +952,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         alert('Your account and all data have been permanently deleted.');
         
         // Clear local data
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith('journal_entries_') || key.startsWith('journal_user_'))) {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach(key => localStorage.removeItem(key));
+        clearUserData();
         
       } catch (error) {
         logger.error('Failed to delete account:', error);
@@ -994,14 +989,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         await Promise.all(deletePromises);
         
         // Clear local storage
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('journal_entries_')) {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach(key => localStorage.removeItem(key));
+        clearUserData(user.uid);
         
         alert('All your journal data has been cleared. Your account remains active.');
         setShowClearAccount(false);
@@ -1915,8 +1903,8 @@ const App = () => {
   const [showEmailVerificationPrompt, setShowEmailVerificationPrompt] = useState(false);
   
   // Rate limiters
-  const authRateLimiterRef = useRef(new RateLimiter(5, 15 * 60 * 1000)); // 5 attempts per 15 minutes
-  const passwordResetRateLimiterRef = useRef(new RateLimiter(3, 60 * 60 * 1000)); // 3 attempts per hour
+  const authRateLimiterRef = useRef(new RateLimiter(APP_CONSTANTS.AUTH_MAX_ATTEMPTS, APP_CONSTANTS.AUTH_WINDOW_MS));
+  const passwordResetRateLimiterRef = useRef(new RateLimiter(APP_CONSTANTS.PASSWORD_RESET_MAX_ATTEMPTS, APP_CONSTANTS.PASSWORD_RESET_WINDOW_MS));
 
   useEffect(() => {
     logger.log('🟢 Current view:', view);
@@ -2301,14 +2289,7 @@ const App = () => {
       await signOut(auth);
       
       // Clear all localStorage entries for security
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('journal_entries_') || key.startsWith('journal_user_'))) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(key => localStorage.removeItem(key));
+      clearUserData();
       
       if (previousEmail) setLoginEmail(previousEmail);
       setSignupName('');

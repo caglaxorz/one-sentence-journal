@@ -14,6 +14,7 @@ import {
 import { db } from '../firebaseClient';
 import { sanitizeText } from '../utils/security';
 import { logger } from '../utils/logger';
+import { APP_CONSTANTS } from '../config/constants';
 
 /**
  * Subscribe to real-time updates for user's journal entries
@@ -116,8 +117,8 @@ export const saveEntry = async (userId, entry) => {
   const sanitizedText = sanitizeText(entry.text || '');
 
   // Validate text length
-  if (sanitizedText.length > 500) {
-    throw new Error('Entry text is too long (max 500 characters)');
+  if (sanitizedText.length > APP_CONSTANTS.ENTRY_MAX_LENGTH) {
+    throw new Error(`Entry text is too long (max ${APP_CONSTANTS.ENTRY_MAX_LENGTH} characters)`);
   }
 
   // Use date as document ID for easy retrieval and updates

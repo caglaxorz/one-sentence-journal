@@ -1,5 +1,6 @@
 // Input sanitization and validation utilities
 import DOMPurify from 'dompurify';
+import { APP_CONSTANTS } from '../config/constants';
 
 /**
  * Sanitizes text input to prevent XSS attacks
@@ -27,8 +28,8 @@ export const sanitizeText = (text) => {
   });
   
   // Additional length validation
-  if (clean.length > 500) {
-    throw new Error('Entry text is too long (max 500 characters)');
+  if (clean.length > APP_CONSTANTS.ENTRY_MAX_LENGTH) {
+    throw new Error(`Entry text is too long (max ${APP_CONSTANTS.ENTRY_MAX_LENGTH} characters)`);
   }
   
   return clean.trim();
