@@ -1062,6 +1062,25 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
 
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
+          {/* Contact Developer */}
+          <button
+            onClick={async () => {
+              try {
+                await AppLauncher.openUrl({ 
+                  url: 'mailto:hello@walruscreativeworks.com' 
+                });
+              } catch (error) {
+                console.error('Failed to open email:', error);
+              }
+            }}
+            className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
+          >
+            <Mail size={20} />
+            <span className="font-medium">Contact Developer</span>
+          </button>
+
+          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
+
           {/* Delete Account */}
           <button
             onClick={() => setShowDeleteAccount(!showDeleteAccount)}
@@ -1080,25 +1099,6 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           >
             <X size={20} />
             <span className="font-medium">Clear Account Data</span>
-          </button>
-
-          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
-
-          {/* Contact Developer */}
-          <button
-            onClick={async () => {
-              try {
-                await AppLauncher.openUrl({ 
-                  url: 'mailto:hello@walruscreativeworks.com' 
-                });
-              } catch (error) {
-                console.error('Failed to open email:', error);
-              }
-            }}
-            className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
-          >
-            <Mail size={20} />
-            <span className="font-medium">Contact Developer</span>
           </button>
 
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
