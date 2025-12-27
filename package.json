@@ -1,7 +1,7 @@
 {
   "name": "one-sentence-journal",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor-firebase/crashlytics": "^8.0.1",
     "@capacitor/app-launcher": "^7.0.2",
     "@capacitor/browser": "^7.0.2",
     "@capacitor/cli": "^7.4.4",
