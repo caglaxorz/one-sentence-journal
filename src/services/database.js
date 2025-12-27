@@ -19,11 +19,14 @@ import { logger } from '../utils/logger';
  * Subscribe to real-time updates for user's journal entries
  * @param {string} userId - The user's UID
  * @param {Function} callback - Callback function to receive entries
+ * @param {Function} errorCallback - Optional callback for error handling with user message
  * @returns {Function} - Unsubscribe function
  */
-export const subscribeToEntries = (userId, callback) => {
+export const subscribeToEntries = (userId, callback, errorCallback) => {
   if (!userId) {
-    logger.error('subscribeToEntries: userId is required');
+    const error = new Error('User ID is required for subscribeToEntries');
+    logger.error(error);
+    if (errorCallback) errorCallback(error, 'User ID is required');
     return () => {};
   }
 
@@ -34,20 +37,58 @@ export const subscribeToEntries = (userId, callback) => {
     q,
     (snapshot) => {
       const entries = [];
+      const validationErrors = [];
+      
       snapshot.forEach((doc) => {
         const data = doc.data();
+        
+        // Validate required fields
+        if (!data.timestamp) {
+          validationErrors.push(`Entry ${doc.id} missing timestamp`);
+          return;
+        }
+        
+        if (!data.mood || !data.date) {
+          validationErrors.push(`Entry ${doc.id} missing required fields (mood or date)`);
+          return;
+        }
+        
+        // Only add valid entries
         entries.push({
           id: doc.id,
           ...data,
-          // Convert Firestore Timestamp to milliseconds
-          timestamp: data.timestamp?.toMillis?.() || data.timestamp || Date.now(),
+          // Convert Firestore Timestamp to milliseconds (no fallback)
+          timestamp: data.timestamp.toMillis(),
         });
       });
+      
+      // Report validation errors in development
+      if (validationErrors.length > 0) {
+        logger.warn('Entry validation errors:', validationErrors);
+      }
+      
       callback(entries);
     },
     (error) => {
       logger.error('Error fetching entries:', error);
-      callback([]);
+      
+      // Provide specific error information to user
+      let userMessage = 'Failed to load entries. ';
+      
+      if (error.code === 'permission-denied') {
+        userMessage += 'Please check your permissions or try logging in again.';
+      } else if (error.code === 'unavailable') {
+        userMessage += 'Network connection lost. Will retry automatically.';
+      } else {
+        userMessage += 'An unexpected error occurred.';
+      }
+      
+      // Call error callback if provided, otherwise fallback to empty array
+      if (errorCallback) {
+        errorCallback(error, userMessage);
+      } else {
+        callback([]);
+      }
     }
   );
 };

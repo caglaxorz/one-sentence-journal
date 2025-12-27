@@ -1994,12 +1994,27 @@ const App = () => {
         
         // Subscribe to real-time Firestore updates only if still mounted
         if (mounted) {
-          unsubscribeEntries = subscribeToEntries(firebaseUser.uid, (entries) => {
-            if (mounted) {  // Check before state update
-              logger.log('Loaded', entries.length, 'entries from Firestore');
-              setEntries(entries);
+          unsubscribeEntries = subscribeToEntries(
+            firebaseUser.uid, 
+            (entries) => {
+              if (mounted) {  // Check before state update
+                logger.log('Loaded', entries.length, 'entries from Firestore');
+                setEntries(entries);
+              }
+            },
+            (error, userMessage) => {
+              // Handle subscription errors
+              if (mounted) {
+                logger.error('Failed to load entries:', error);
+                // Show user-friendly error message
+                alert(userMessage);
+                // If permission denied, log user out
+                if (error.code === 'permission-denied') {
+                  setView('auth');
+                }
+              }
             }
-          });
+          );
         }
         
         // One-time migration: move localStorage entries to Firestore
