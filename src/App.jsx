@@ -1894,6 +1894,7 @@ const App = () => {
   
   // Rate limiters
   const authRateLimiterRef = useRef(new RateLimiter(5, 15 * 60 * 1000)); // 5 attempts per 15 minutes
+  const passwordResetRateLimiterRef = useRef(new RateLimiter(3, 60 * 60 * 1000)); // 3 attempts per hour
 
   useEffect(() => {
     logger.log('🟢 Current view:', view);
@@ -2172,12 +2173,33 @@ const App = () => {
       return;
     }
 
+    // ✅ Rate limit password resets to prevent abuse and email enumeration
+    const rateLimit = passwordResetRateLimiterRef.current.checkLimit(trimmedEmail);
+    if (!rateLimit.allowed) {
+      const minutes = Math.ceil((rateLimit.resetTime - Date.now()) / 60000);
+      setAuthMessage({ 
+        type: 'error', 
+        text: `Too many reset attempts. Please wait ${minutes} minute(s) before trying again.` 
+      });
+      return;
+    }
+
     setIsAuthBusy(true);
     try {
       await sendPasswordResetEmail(auth, trimmedEmail);
-      setAuthMessage({ type: 'success', text: 'Reset link sent! Check your inbox.' });
+      
+      // ✅ Generic message to prevent email enumeration
+      // Don't reveal whether the email exists in the system
+      setAuthMessage({ 
+        type: 'success', 
+        text: 'If an account exists with that email, a reset link has been sent.' 
+      });
     } catch (error) {
-      setAuthMessage({ type: 'error', text: describeAuthError(error) });
+      // ✅ Don't reveal if email exists - show same message
+      setAuthMessage({ 
+        type: 'success', 
+        text: 'If an account exists with that email, a reset link has been sent.' 
+      });
       logger.error('Password reset failed:', error);
     } finally {
       setIsAuthBusy(false);
