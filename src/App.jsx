@@ -1958,34 +1958,49 @@ const App = () => {
     logger.log('Setting up Firebase auth listener...');
     let authFired = false;
     let unsubscribeEntries = null;
+    let mounted = true;  // Track component mount status to prevent stale updates
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!mounted) return;  // Don't update if component unmounted
+      
       logger.log('Firebase auth state changed:', firebaseUser ? 'User logged in' : 'No user');
       authFired = true;
       
+      // Clean up previous listener before creating new one
+      if (unsubscribeEntries) {
+        unsubscribeEntries();
+        unsubscribeEntries = null;
+      }
+      
       if (firebaseUser) {
-        setUser({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Dreamer',
-          avatar: firebaseUser.photoURL,
-          emailVerified: firebaseUser.emailVerified,
-        });
-        setLoginEmail(firebaseUser.email || '');
-        setLoginPassword('');
-        setAuthMode('login');
-        setAuthMessage(null);
+        if (mounted) {
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Dreamer',
+            avatar: firebaseUser.photoURL,
+            emailVerified: firebaseUser.emailVerified,
+          });
+          setLoginEmail(firebaseUser.email || '');
+          setLoginPassword('');
+          setAuthMode('login');
+          setAuthMessage(null);
+        }
         
         // Check email verification
-        if (!firebaseUser.emailVerified) {
+        if (!firebaseUser.emailVerified && mounted) {
           setShowEmailVerificationPrompt(true);
         }
         
-        // Subscribe to real-time Firestore updates
-        unsubscribeEntries = subscribeToEntries(firebaseUser.uid, (entries) => {
-          logger.log('Loaded', entries.length, 'entries from Firestore');
-          setEntries(entries);
-        });
+        // Subscribe to real-time Firestore updates only if still mounted
+        if (mounted) {
+          unsubscribeEntries = subscribeToEntries(firebaseUser.uid, (entries) => {
+            if (mounted) {  // Check before state update
+              logger.log('Loaded', entries.length, 'entries from Firestore');
+              setEntries(entries);
+            }
+          });
+        }
         
         // One-time migration: move localStorage entries to Firestore
         const storageKey = `journal_entries_${firebaseUser.uid}`;
@@ -2005,40 +2020,41 @@ const App = () => {
           }
         }
         
-        setView('dashboard');
-      } else {
-        setUser(null);
-        setEntries([]);
-        setAuthMode('login');
-        setLoginPassword('');
-        setShowEmailVerificationPrompt(false);
-        
-        // Unsubscribe from entries when logged out
-        if (unsubscribeEntries) {
-          unsubscribeEntries();
-          unsubscribeEntries = null;
+        if (mounted) {
+          setView('dashboard');
         }
-        
-        setView('auth');
+      } else {
+        if (mounted) {
+          setUser(null);
+          setEntries([]);
+          setAuthMode('login');
+          setLoginPassword('');
+          setShowEmailVerificationPrompt(false);
+          setView('auth');
+        }
       }
     }, (error) => {
       logger.error('Firebase auth error:', error);
       authFired = true;
-      setView('auth');
+      if (mounted) {
+        setView('auth');
+      }
     });
 
     // Fallback: if auth doesn't fire within 3 seconds, assume no user and show auth
     const timeout = setTimeout(() => {
-      if (!authFired) {
+      if (!authFired && mounted) {
         logger.warn('Firebase auth listener timeout - forcing auth view');
         setView('auth');
       }
     }, 3000);
 
     return () => {
+      mounted = false;  // Prevent any further state updates
       unsubscribe();
       if (unsubscribeEntries) {
         unsubscribeEntries();
+        unsubscribeEntries = null;
       }
       clearTimeout(timeout);
     };
