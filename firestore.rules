@@ -15,16 +15,40 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
     
+    // Comprehensive entry validation with format checks
     function isValidEntry() {
       let entry = request.resource.data;
-      return entry.keys().hasAll(['date', 'text', 'mood', 'timestamp', 'userId'])
-        && entry.text is string
-        && entry.text.size() > 0
-        && entry.text.size() <= 500
-        && entry.mood is string
-        && entry.date is string
-        && entry.userId == request.auth.uid
-        && entry.timestamp is timestamp;
+      
+      // Required fields check
+      let hasRequired = entry.keys().hasAll(['date', 'text', 'mood', 'timestamp', 'userId']);
+      
+      // Text validation (1-500 characters, any content)
+      let validText = entry.text is string 
+        && entry.text.size() > 0 
+        && entry.text.size() <= 500;
+      
+      // Date format validation (YYYY-MM-DD)
+      let validDate = entry.date is string 
+        && entry.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && entry.date.size() == 10;
+      
+      // Mood validation (1-4 character emoji/string)
+      let validMood = entry.mood is string 
+        && entry.mood.size() >= 1 
+        && entry.mood.size() <= 4;
+      
+      // User ownership verification
+      let isOwner = entry.userId == request.auth.uid;
+      
+      // Timestamp validation
+      let validTimestamp = entry.timestamp is timestamp;
+      
+      // Optional fields validation
+      let validOptional = (!('mattered' in entry) || entry.mattered is bool)
+        && (!('prompt' in entry) || (entry.prompt is string && entry.prompt.size() <= 200))
+        && (!('createdAt' in entry) || entry.createdAt is string);
+      
+      return hasRequired && validText && validDate && validMood && isOwner && validTimestamp && validOptional;
     }
     
     // User entries collection: users/{userId}/entries/{entryId}
