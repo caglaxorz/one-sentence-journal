@@ -998,33 +998,6 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
-          {/* Emoji Palette Button */}
-          <button
-            onClick={() => setShowPaletteModal(true)}
-            className={`mx-4 p-4 rounded-2xl border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white/60 border-white/40 hover:bg-white/80'}`}
-          >
-            <div className={`flex items-center space-x-3 ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>
-              <Palette size={20} />
-              <div className="text-left">
-                <div className="font-medium text-sm">Emoji Palette</div>
-                <div className={`text-xs ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
-                  {selectedPalette === 'emotions' && 'Emotions'}
-                  {selectedPalette === 'colors' && 'Colors'}
-                  {selectedPalette === 'animals' && 'Animals'}
-                  {selectedPalette === 'custom' && 'Custom (DIY)'}
-                </div>
-              </div>
-            </div>
-            <div className="flex space-x-1 text-lg">
-              {selectedPalette === 'custom' && customPalette.length > 0 ? 
-                customPalette.map((m, i) => <span key={i}>{m.emoji}</span>) :
-                MOOD_PALETTES[selectedPalette]?.map((m, i) => <span key={i}>{m.emoji}</span>)
-              }
-            </div>
-          </button>
-
-          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
-
           {/* Contact Developer */}
           <button
             onClick={async () => {
@@ -1072,9 +1045,8 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [selectedMoodFilter, setSelectedMoodFilter] = useState(null);
-    
-    // Get all unique moods from entries
-    const allMoods = [...new Set(entries.map(e => e.mood))];
+    const [currentPage, setCurrentPage] = useState(1);
+    const ENTRIES_PER_PAGE = 20;
     
     // Logic
     const sortedEntries = [...entries]
@@ -1086,6 +1058,17 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
           return true;
         })
         .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Pagination calculations
+    const totalPages = Math.ceil(sortedEntries.length / ENTRIES_PER_PAGE);
+    const startIndex = (currentPage - 1) * ENTRIES_PER_PAGE;
+    const endIndex = startIndex + ENTRIES_PER_PAGE;
+    const paginatedEntries = sortedEntries.slice(startIndex, endIndex);
+    
+    // Reset to page 1 when filters change
+    useEffect(() => {
+      setCurrentPage(1);
+    }, [showMatteredOnly, dateFrom, dateTo, selectedMoodFilter]);
 
     // PDF Generator - iOS compatible version using native share
     const generatePDF = async () => {
@@ -1150,89 +1133,77 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
 
     return (
       <div className="space-y-6 pb-24">
-        {/* Header with PDF */}
+        {/* Header */}
         <div className="flex justify-between items-center">
           <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>Entries</h2>
-          <div className="flex items-center space-x-2">
-            <button 
-                onClick={() => setShowMatteredOnly(!showMatteredOnly)}
-                className={`px-3 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${showMatteredOnly ? 'bg-rose-400 text-white shadow-lg shadow-rose-200' : (isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-500')}`}
-            >
-                {showMatteredOnly ? '⭐' : 'Filter ⭐'} {showMatteredOnly && <X size={12} className="inline ml-1" />}
-            </button>
-            <button 
-              onClick={generatePDF}
-              className={`flex items-center space-x-2 px-3 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-transform hover:scale-105 ${isDarkMode ? 'bg-indigo-600 text-white' : 'bg-white text-rose-500 shadow-sm'}`}
-            >
-              <Download size={14} />
-              <span>PDF</span>
-            </button>
-          </div>
+          <button 
+            onClick={generatePDF}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-transform hover:scale-105 ${isDarkMode ? 'bg-indigo-600 text-white' : 'bg-white text-rose-500 shadow-sm'}`}
+          >
+            <Download size={14} />
+            <span>PDF</span>
+          </button>
         </div>
         
-        {/* Filters Section */}
-        <div className="space-y-3">
-            {/* Date Range Filter */}
-            <div className={`p-3 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
-              <div className="flex items-center space-x-2">
-                <span className={`text-xs font-medium whitespace-nowrap ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Filter by date:</span>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  placeholder="From"
-                  className={`flex-1 px-2 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
-                />
-                <span className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>to</span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  placeholder="To"
-                  className={`flex-1 px-2 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
-                />
-                {(dateFrom || dateTo) && (
-                  <button
-                    onClick={() => { setDateFrom(''); setDateTo(''); }}
-                    className={`p-1.5 rounded-lg ${isDarkMode ? 'bg-white/10 text-indigo-300 hover:bg-white/20' : 'bg-white/80 text-slate-500 hover:bg-white'}`}
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
+        {/* Compact Filters Section */}
+        <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
+          {/* Quick Filter Chips */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button 
+              onClick={() => setShowMatteredOnly(!showMatteredOnly)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${showMatteredOnly ? 'bg-rose-400 text-white shadow-md' : (isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-600')}`}
+            >
+              ⭐ Core Memories {showMatteredOnly && '✓'}
+            </button>
             
-            {/* Mood Filter */}
-            {allMoods.length > 0 && (
-              <div className={`p-3 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
-                <div className="flex items-center space-x-2 mb-2">
-                  <span className={`text-xs font-medium ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Filter by mood:</span>
-                  {selectedMoodFilter && (
-                    <button
-                      onClick={() => setSelectedMoodFilter(null)}
-                      className={`text-xs ${isDarkMode ? 'text-indigo-400 hover:text-indigo-300' : 'text-rose-500 hover:text-rose-600'}`}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {allMoods.map(mood => (
-                    <button
-                      key={mood}
-                      onClick={() => setSelectedMoodFilter(selectedMoodFilter === mood ? null : mood)}
-                      className={`text-2xl p-2 rounded-xl transition-all ${selectedMoodFilter === mood ? (isDarkMode ? 'bg-indigo-500/30 ring-2 ring-indigo-400' : 'bg-rose-100 ring-2 ring-rose-300') : (isDarkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/50 hover:bg-white/70')}`}
-                    >
-                      {mood}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {MOOD_PALETTES.emotions.map(moodObj => (
+              <button
+                key={moodObj.emoji}
+                onClick={() => setSelectedMoodFilter(selectedMoodFilter === moodObj.emoji ? null : moodObj.emoji)}
+                className={`px-2.5 py-1.5 rounded-full text-lg transition-all ${selectedMoodFilter === moodObj.emoji ? (isDarkMode ? 'bg-indigo-500/30 ring-2 ring-indigo-400' : 'bg-rose-100 ring-2 ring-rose-300') : (isDarkMode ? 'bg-white/10 hover:bg-white/15' : 'bg-white/60 hover:bg-white/80')}`}
+              >
+                {moodObj.emoji}
+              </button>
+            ))}
+            
+            {selectedMoodFilter && (
+              <button
+                onClick={() => setSelectedMoodFilter(null)}
+                className={`px-2.5 py-1.5 rounded-full text-xs font-medium ${isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-600'}`}
+              >
+                Clear mood
+              </button>
             )}
+          </div>
+          
+          {/* Date Range */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className={`flex-1 px-3 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
+            />
+            <span className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>→</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className={`flex-1 px-3 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={() => { setDateFrom(''); setDateTo(''); }}
+                className={`p-1.5 rounded-lg ${isDarkMode ? 'bg-white/10 text-indigo-300 hover:bg-white/20' : 'bg-white/80 text-slate-500 hover:bg-white'}`}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">
-          {sortedEntries.map(entry => (
+          {paginatedEntries.map(entry => (
             <div 
               key={entry.date} 
               className={`relative p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-transform hover:scale-[1.02] active:scale-95 shadow-sm ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white/40 border-white/40 hover:bg-white/60 shadow-rose-100'}`}
@@ -1266,6 +1237,38 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
             </div>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className={`mt-6 flex items-center justify-between p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className={`px-4 py-2 rounded-full flex items-center space-x-2 transition-all ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : (isDarkMode ? 'bg-indigo-500/30 hover:bg-indigo-500/40 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700')}`}
+            >
+              <ChevronLeft size={16} />
+              <span className="text-sm font-medium">Previous</span>
+            </button>
+            
+            <div className="flex items-center space-x-2">
+              <span className={`text-sm ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>
+                Page {currentPage} of {totalPages}
+              </span>
+              <span className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-400'}`}>
+                ({sortedEntries.length} total)
+              </span>
+            </div>
+            
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className={`px-4 py-2 rounded-full flex items-center space-x-2 transition-all ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : (isDarkMode ? 'bg-indigo-500/30 hover:bg-indigo-500/40 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700')}`}
+            >
+              <span className="text-sm font-medium">Next</span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
       </div>
     );
 };
@@ -2126,7 +2129,7 @@ const App = () => {
         </main>
 
         {['dashboard', 'calendar', 'list', 'profile'].includes(view) && (
-          <nav className={`fixed bottom-6 left-6 right-6 h-18 rounded-3xl shadow-xl flex items-center justify-between px-6 border z-50 transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/80 border-white/10 text-indigo-300' : 'bg-white/60 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
+          <nav className={`fixed bottom-0 left-0 right-0 h-20 shadow-xl flex items-center justify-between px-8 border-t z-50 transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/95 border-white/10 text-indigo-300' : 'bg-white/95 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
             
             <button onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
               <Home size={24} strokeWidth={view === 'dashboard' ? 2.5 : 2} />
@@ -2138,7 +2141,7 @@ const App = () => {
 
             <button 
               onClick={() => { Haptics.selectionChanged(); setSelectedDate(formatDate(new Date())); setView('write'); }}
-              className={`w-14 h-14 rounded-full shadow-lg transform -translate-y-6 hover:scale-110 transition-all flex items-center justify-center ${isDarkMode ? 'bg-indigo-500 text-white shadow-indigo-500/50' : 'bg-gradient-to-tr from-rose-400 to-pink-500 text-white shadow-rose-300/50'}`}
+              className={`w-14 h-14 rounded-full shadow-lg transform -translate-y-8 hover:scale-110 transition-all flex items-center justify-center ${isDarkMode ? 'bg-indigo-500 text-white shadow-indigo-500/50' : 'bg-gradient-to-tr from-rose-400 to-pink-500 text-white shadow-rose-300/50'}`}
             >
               <Plus size={28} strokeWidth={2.5} />
             </button>
