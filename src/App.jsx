@@ -4,7 +4,6 @@ import {
   Calendar as CalendarIcon, 
   Home, 
   Plus, 
-  Image as ImageIcon, 
   ChevronLeft, 
   ChevronRight, 
   Star, 
@@ -535,10 +534,8 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
     const [entryDate, setEntryDate] = useState(selectedDate);
     const [text, setText] = useState('');
     const [mood, setMood] = useState(null);
-    const [photo, setPhoto] = useState(null);
     const [mattered, setMattered] = useState(false);
     const [saving, setSaving] = useState(false);
-    const fileInputRef = useRef(null);
 
     // Helpers
     const getEntryForDate = (date) => entries.find(e => e.date === date);
@@ -549,23 +546,13 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
       if (existing) {
         setText(existing.text);
         setMood(existing.mood);
-        setPhoto(existing.photo);
         setMattered(existing.mattered);
       } else {
         setText('');
         setMood(null);
-        setPhoto(null);
         setMattered(false);
       }
     }, [entryDate]);
-
-    const calculateStorageSize = (entries) => {
-      return entries.reduce((total, entry) => {
-        const textSize = new Blob([entry.text || '']).size;
-        const photoSize = entry.photo ? entry.photo.length : 0;
-        return total + textSize + photoSize;
-      }, 0);
-    };
 
     const handleSave = async () => {
       if (!mood) {
@@ -578,17 +565,6 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
         return;
       }
       
-      // Check storage quota (100MB per user)
-      const MAX_STORAGE_BYTES = 100 * 1024 * 1024; // 100MB
-      const currentSize = calculateStorageSize(entries);
-      const newEntrySize = new Blob([text]).size + (photo ? photo.length : 0);
-      
-      if (currentSize + newEntrySize > MAX_STORAGE_BYTES) {
-        alert('Storage limit reached (100MB). Please delete some entries or photos to continue.');
-        setSaving(false);
-        return;
-      }
-      
       setSaving(true);
       
       try {
@@ -596,7 +572,6 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
           date: entryDate,
           text: text.trim(),
           mood,
-          photo,
           mattered,
           prompt: dailyPrompt,
           createdAt: new Date().toISOString(), // Track actual creation time
@@ -609,66 +584,6 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
         alert('Failed to save entry. Please try again.');
       } finally {
         setSaving(false);
-      }
-    };
-
-    const compressImage = (file, maxSizeKB = 200) => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Resize to max 1200px on longest side
-            const maxDimension = 1200;
-            if (width > height && width > maxDimension) {
-              height = (height * maxDimension) / width;
-              width = maxDimension;
-            } else if (height > maxDimension) {
-              width = (width * maxDimension) / height;
-              height = maxDimension;
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Start with quality 0.8 and reduce until under target size
-            let quality = 0.8;
-            let dataUrl = canvas.toDataURL('image/jpeg', quality);
-            
-            while (dataUrl.length > maxSizeKB * 1024 * 1.37 && quality > 0.1) {
-              quality -= 0.1;
-              dataUrl = canvas.toDataURL('image/jpeg', quality);
-            }
-            
-            resolve(dataUrl);
-          };
-          img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    };
-
-    const handlePhoto = async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit for upload
-          alert('Image too large. Please select a smaller image (under 10MB).');
-          return;
-        }
-        
-        try {
-          const compressed = await compressImage(file, 200);
-          setPhoto(compressed);
-        } catch (error) {
-          console.error('Image compression failed:', error);
-          alert('Failed to process image. Please try another.');
-        }
       }
     };
 
@@ -737,14 +652,6 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
           {/* Extras */}
           <div className="flex items-center space-x-4">
             <button 
-              onClick={() => fileInputRef.current?.click()}
-              className={`p-3 rounded-2xl border flex items-center justify-center transition-colors ${photo ? 'border-rose-300 bg-rose-50 text-rose-500' : (isDarkMode ? 'border-indigo-800 text-indigo-400' : 'border-white/50 bg-white/30 text-slate-500')}`}
-            >
-              <ImageIcon size={20} />
-            </button>
-            <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handlePhoto} />
-
-            <button 
               onClick={() => setMattered(!mattered)}
               className={`flex-1 p-3 rounded-2xl border flex items-center justify-center space-x-2 transition-colors ${mattered ? 'border-amber-300 bg-amber-50 text-amber-600' : (isDarkMode ? 'border-indigo-800 text-indigo-400' : 'border-white/50 bg-white/30 text-slate-500')}`}
             >
@@ -752,15 +659,6 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
               <span className="text-sm font-medium">This entry mattered</span>
             </button>
           </div>
-          
-          {photo && (
-            <div className="relative rounded-2xl overflow-hidden shadow-md">
-              <img src={photo} alt="Attached" className="w-full h-48 object-cover" />
-              <button onClick={() => setPhoto(null)} className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full">
-                <X size={16} />
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Save Button */}
@@ -1469,14 +1367,7 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
                   </div>
                   {entry.mattered && <Star size={14} className="text-amber-400" fill="currentColor" />}
                 </div>
-                <div className="flex items-start space-x-3">
-                  <p className={`flex-1 text-sm font-serif italic truncate ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{entry.text}</p>
-                  {entry.photo && (
-                    <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 border-white/20">
-                      <img src={entry.photo} alt="Memory" className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                </div>
+                <p className={`text-sm font-serif italic truncate ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{entry.text}</p>
               </div>
             </div>
           ))}
@@ -1563,12 +1454,6 @@ const EntryDetailView = ({ entries, selectedDate, setView, isDarkMode }) => {
            <div className={`p-8 rounded-[2rem] shadow-sm border backdrop-blur-xl ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/60 shadow-rose-100'}`}>
              <p className={`text-2xl font-serif leading-relaxed italic ${isDarkMode ? 'text-indigo-100' : 'text-slate-800'}`}>"{entry.text}"</p>
            </div>
-
-           {entry.photo && (
-             <div className="rounded-[2rem] overflow-hidden shadow-lg border-4 border-white/20">
-               <img src={entry.photo} alt="Memory" className="w-full h-auto" />
-             </div>
-           )}
         </div>
       </div>
     );
