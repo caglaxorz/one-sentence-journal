@@ -135,11 +135,7 @@ const getDayName = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 };
 
-const getLastThirtyDaysEntries = (entries) => {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - (APP_CONSTANTS.STATS_WINDOW_DAYS - 1));
-  return entries.filter((entry) => new Date(entry.date) >= cutoff);
-};
+// getLastThirtyDaysEntries moved inside App component as useMemo for performance
 
 // --- Sub-Components (Defined outside App to prevent re-render bugs) ---
 
@@ -431,7 +427,6 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
   };
 
   const getMonthMood = () => {
-    const recentEntries = getLastThirtyDaysEntries(entries);
     if (recentEntries.length === 0) return null;
     const counts = {};
     recentEntries.forEach(e => counts[e.mood] = (counts[e.mood] || 0) + 1);
@@ -727,7 +722,6 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
     };
 
      // 1. Last 30 Days
-     const recentEntries = getLastThirtyDaysEntries(entries);
      const lastMonthVibe = getDominantMood(recentEntries);
     // ---------------------------
 
@@ -1882,6 +1876,16 @@ const App = () => {
   // State
   const [user, setUser] = useState(null);
   const [entries, setEntries] = useState([]);
+  
+  // Memoized expensive calculations
+  const recentEntries = useMemo(() => {
+    const cutoffTimestamp = Date.now() - ((APP_CONSTANTS.STATS_WINDOW_DAYS - 1) * 24 * 60 * 60 * 1000);
+    return entries.filter(entry => {
+      const entryTimestamp = entry.timestamp || new Date(entry.date).getTime();
+      return entryTimestamp >= cutoffTimestamp;
+    });
+  }, [entries]);
+  
   const [view, setView] = useState('loading'); 
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date())); 
   const [dailyPrompt, setDailyPrompt] = useState('');
