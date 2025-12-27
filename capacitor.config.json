@@ -1,5 +1,13 @@
 {
   "appId": "com.walruscreativeworks.onesentence",
   "appName": "One Sentence Journal",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "serverClientId": "300506798842-hsv5hvicd7qsl1ucbcocgknpe50dfcee.apps.googleusercontent.com",
+      "iosClientId": "300506798842-vpve57mlcv9k13vjlek31n5d1t6j7lun.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": true
+    }
+  }
 }

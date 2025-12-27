@@ -13,6 +13,8 @@ def capacitor_pods
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorAppLauncher', :path => '../../node_modules/@capacitor/app-launcher'
   pod 'CapacitorBrowser', :path => '../../node_modules/@capacitor/browser'
+  pod 'CapacitorHaptics', :path => '../../node_modules/@capacitor/haptics'
+  pod 'CodetrixStudioCapacitorGoogleAuth', :path => '../../node_modules/@codetrix-studio/capacitor-google-auth'
 end
 
 target 'App' do
@@ -20,8 +22,18 @@ target 'App' do
   # Add your Pods here
   pod 'FirebaseCore'
   pod 'FirebaseAuth'
+  # Force compatible version of GTMSessionFetcher
+  pod 'GTMSessionFetcher/Core', '~> 2.3'
 end
 
 post_install do |installer|
   assertDeploymentTarget(installer)
+  # Force GoogleSignIn to use compatible GTMSessionFetcher
+  installer.pods_project.targets.each do |target|
+    if target.name == 'GoogleSignIn'
+      target.build_configurations.each do |config|
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+      end
+    end
+  end
 end

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import EmojiPicker from 'emoji-picker-react';
 import { 
   Calendar as CalendarIcon, 
   Home, 
@@ -18,6 +19,7 @@ import {
   Download,
   Clock,
   Mail,
+  Palette,
   Lock,
   ArrowRight,
   Camera,
@@ -35,11 +37,14 @@ import {
   sendEmailVerification,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithCredential,
 } from 'firebase/auth';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { Capacitor } from '@capacitor/core';
+import { Haptics } from '@capacitor/haptics';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { subscribeToEntries, saveEntry, deleteEntry, migrateLocalEntries } from './services/database';
+import { sanitizeText, validateName, validatePassword, validateEmail, RateLimiter } from './utils/security';
 
 // --- Constants & Config ---
 
@@ -78,13 +83,31 @@ const PROMPTS = [
   "What gave you hope?"
 ];
 
-const MOODS = [
-  { emoji: '😌', label: 'Peaceful', color: 'bg-green-100 text-green-600', darkColor: 'bg-green-900/30 text-green-300' },
-  { emoji: '😔', label: 'Sad', color: 'bg-blue-100 text-blue-600', darkColor: 'bg-blue-900/30 text-blue-300' },
-  { emoji: '😤', label: 'Frustrated', color: 'bg-red-100 text-red-600', darkColor: 'bg-red-900/30 text-red-300' },
-  { emoji: '🥰', label: 'Loved', color: 'bg-pink-100 text-pink-600', darkColor: 'bg-pink-900/30 text-pink-300' },
-  { emoji: '🤯', label: 'Overwhelmed', color: 'bg-purple-100 text-purple-600', darkColor: 'bg-purple-900/30 text-purple-300' }
-];
+const MOOD_PALETTES = {
+  emotions: [
+    { emoji: '😌', label: 'Peaceful', color: 'bg-green-100 text-green-600', darkColor: 'bg-green-900/30 text-green-300' },
+    { emoji: '😔', label: 'Sad', color: 'bg-blue-100 text-blue-600', darkColor: 'bg-blue-900/30 text-blue-300' },
+    { emoji: '😤', label: 'Frustrated', color: 'bg-red-100 text-red-600', darkColor: 'bg-red-900/30 text-red-300' },
+    { emoji: '🥰', label: 'Loved', color: 'bg-pink-100 text-pink-600', darkColor: 'bg-pink-900/30 text-pink-300' },
+    { emoji: '🤯', label: 'Overwhelmed', color: 'bg-purple-100 text-purple-600', darkColor: 'bg-purple-900/30 text-purple-300' }
+  ],
+  colors: [
+    { emoji: '🔴', label: 'Red', color: 'bg-red-100 text-red-600', darkColor: 'bg-red-900/30 text-red-300' },
+    { emoji: '🟢', label: 'Green', color: 'bg-green-100 text-green-600', darkColor: 'bg-green-900/30 text-green-300' },
+    { emoji: '🟡', label: 'Yellow', color: 'bg-yellow-100 text-yellow-600', darkColor: 'bg-yellow-900/30 text-yellow-300' },
+    { emoji: '🔵', label: 'Blue', color: 'bg-blue-100 text-blue-600', darkColor: 'bg-blue-900/30 text-blue-300' },
+    { emoji: '🟣', label: 'Purple', color: 'bg-purple-100 text-purple-600', darkColor: 'bg-purple-900/30 text-purple-300' }
+  ],
+  animals: [
+    { emoji: '🦋', label: 'Butterfly', color: 'bg-pink-100 text-pink-600', darkColor: 'bg-pink-900/30 text-pink-300' },
+    { emoji: '🐢', label: 'Turtle', color: 'bg-green-100 text-green-600', darkColor: 'bg-green-900/30 text-green-300' },
+    { emoji: '🦁', label: 'Lion', color: 'bg-orange-100 text-orange-600', darkColor: 'bg-orange-900/30 text-orange-300' },
+    { emoji: '🐋', label: 'Whale', color: 'bg-blue-100 text-blue-600', darkColor: 'bg-blue-900/30 text-blue-300' },
+    { emoji: '🦉', label: 'Owl', color: 'bg-purple-100 text-purple-600', darkColor: 'bg-purple-900/30 text-purple-300' }
+  ]
+};
+
+const MOODS = MOOD_PALETTES.emotions; // Default for backward compatibility
 
 const WELCOME_MESSAGES = [
   "Welcome, {name}.",
@@ -111,6 +134,48 @@ const getLastThirtyDaysEntries = (entries) => {
 };
 
 // --- Sub-Components (Defined outside App to prevent re-render bugs) ---
+
+const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
+  const [sending, setSending] = useState(false);
+  
+  const handleResend = async () => {
+    setSending(true);
+    try {
+      await onResend();
+    } finally {
+      setSending(false);
+    }
+  };
+  
+  return (
+    <>
+      {/* Blocking overlay */}
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md" />
+      
+      {/* Banner */}
+      <div className={`fixed top-0 left-0 right-0 z-50 pt-14 pb-4 px-4 ${isDarkMode ? 'bg-indigo-900/90' : 'bg-amber-100/95'} backdrop-blur-md border-b ${isDarkMode ? 'border-indigo-700/50' : 'border-amber-300'}`}>
+        <div className="max-w-md mx-auto flex items-start space-x-3">
+        <Mail size={20} className={isDarkMode ? 'text-indigo-300 mt-0.5' : 'text-amber-700 mt-0.5'} />
+        <div className="flex-1">
+          <p className={`text-sm font-medium ${isDarkMode ? 'text-indigo-100' : 'text-amber-900'}`}>
+            Please verify your email address
+          </p>
+          <p className={`text-xs mt-1 ${isDarkMode ? 'text-indigo-200/80' : 'text-amber-700/80'}`}>
+            We sent a verification link to {user?.email}. Check your inbox and click the link to verify your account.
+          </p>
+          <button
+            onClick={handleResend}
+            disabled={sending}
+            className={`text-xs mt-2 underline ${isDarkMode ? 'text-indigo-200 hover:text-white' : 'text-amber-800 hover:text-amber-900'} ${sending ? 'opacity-50' : ''}`}
+          >
+            {sending ? 'Sending...' : 'Resend verification email'}
+          </button>
+        </div>
+      </div>
+    </div>
+    </>
+  );
+};
 
 const AuthView = ({
   isDarkMode,
@@ -145,18 +210,15 @@ const AuthView = ({
         <p className={`mt-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Capture your life, one day at a time.</p>
       </div>
 
-      {/* Hide Google Sign-In on iOS native - not fully configured yet */}
-      {!Capacitor.isNativePlatform() && (
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          disabled={isAuthBusy}
-          className={`w-full max-w-xs py-3 rounded-2xl border flex items-center justify-center space-x-3 font-medium transition-colors ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'border-white/10 bg-white/5 text-indigo-100 hover:bg-white/10' : 'border-white/60 bg-white/80 text-slate-700 hover:bg-white'}`}
-        >
-          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-700 text-sm font-bold">G</span>
-          <span>Continue with Google</span>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={handleGoogleLogin}
+        disabled={isAuthBusy}
+        className={`w-full max-w-xs py-3 rounded-2xl border flex items-center justify-center space-x-3 font-medium transition-colors ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'border-white/10 bg-white/5 text-indigo-100 hover:bg-white/10' : 'border-white/60 bg-white/80 text-slate-700 hover:bg-white'}`}
+      >
+        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-700 text-sm font-bold">G</span>
+        <span>Continue with Google</span>
+      </button>
 
       <div className={`w-full max-w-xs flex items-center justify-between rounded-2xl p-1 border ${isDarkMode ? 'border-white/10 bg-white/5' : 'border-white/50 bg-white/60'}`}>
         <button
@@ -262,17 +324,6 @@ const AuthView = ({
             />
           </div>
 
-          <div className="text-right">
-            <button
-              type="button"
-              onClick={handleResetPassword}
-              disabled={!loginEmail || isAuthBusy}
-              className={`text-xs font-medium ${isAuthBusy || !loginEmail ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'}`}
-            >
-              Forgot Password?
-            </button>
-          </div>
-
           <button
             type="submit"
             disabled={isAuthBusy}
@@ -282,12 +333,16 @@ const AuthView = ({
             <ArrowRight size={18} />
           </button>
 
-          <p className={`text-xs ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
-            Need an account?{' '}
-            <button type="button" onClick={() => setAuthMode('signup')} className={`font-semibold underline ${isDarkMode ? 'text-indigo-200' : 'text-rose-500'}`}>
-              Sign up for free
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={!loginEmail || isAuthBusy}
+              className={`text-xs font-medium ${isAuthBusy || !loginEmail ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'}`}
+            >
+              Forgot Password?
             </button>
-          </p>
+          </div>
         </form>
       )}
     </div>
@@ -301,8 +356,17 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
 
   const calculateStreak = () => {
     let streak = 0;
-    const sortedEntries = [...entries].sort((a, b) => new Date(b.date) - new Date(a.date));
     const today = formatDate(new Date());
+    
+    // Filter entries that were CREATED on the same day as their date (not backdated)
+    const validEntries = entries.filter(e => {
+      if (!e.createdAt) return true; // Legacy entries without createdAt
+      const entryDate = formatDate(new Date(e.date));
+      const createdDate = formatDate(new Date(e.createdAt));
+      return entryDate === createdDate; // Only count entries created on their actual date
+    });
+    
+    const sortedEntries = [...validEntries].sort((a, b) => new Date(b.date) - new Date(a.date));
     const hasToday = sortedEntries.some(e => e.date === today);
 
     if (!hasToday) return 0;
@@ -361,19 +425,28 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
           </h2>
           <p className={`text-sm mt-1 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{todayDisplay}</p>
         </div>
-        <button onClick={() => setView('calendar')} className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-700'}`}>
-          Insights &rarr;
-        </button>
       </div>
 
       {/* Today's Card */}
       <div className={`relative overflow-hidden rounded-3xl p-6 text-center space-y-4 border shadow-xl backdrop-blur-xl transition-colors ${isDarkMode ? 'bg-white/5 border-white/10 shadow-indigo-900/20' : 'bg-white/60 border-white/40 shadow-rose-200/50'}`}>
         {todayEntry ? (
-          <div onClick={() => { setSelectedDate(todayEntry.date); setView('details'); }} className="cursor-pointer">
-            <span className="text-6xl filter drop-shadow-sm">{todayEntry.mood}</span>
-            <p className={`mt-4 font-serif text-lg italic ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>"{todayEntry.text}"</p>
-            <div className={`mt-2 text-xs uppercase tracking-widest font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Recorded Today</div>
-          </div>
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedDate(todayEntry.date);
+                setView('write');
+              }}
+              className={`absolute top-4 right-4 p-2 rounded-full transition-colors ${isDarkMode ? 'bg-white/10 hover:bg-white/20 text-indigo-300' : 'bg-white/60 hover:bg-white/80 text-slate-600'}`}
+            >
+              <Edit2 size={16} />
+            </button>
+            <div onClick={() => { setSelectedDate(todayEntry.date); setView('details'); }} className="cursor-pointer">
+              <span className="text-6xl filter drop-shadow-sm">{todayEntry.mood}</span>
+              <p className={`mt-4 font-serif text-lg italic ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>"{todayEntry.text}"</p>
+              <div className={`mt-2 text-xs uppercase tracking-widest font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Recorded Today</div>
+            </div>
+          </>
         ) : (
           <div className="py-4">
             <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-4 ${isDarkMode ? 'bg-indigo-900/50' : 'bg-white/60 text-rose-400'}`}>
@@ -393,7 +466,6 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
       {/* Stats Row */}
       <div className="grid grid-cols-2 gap-4">
         <div className={`backdrop-blur-md rounded-3xl p-5 border flex flex-col items-center justify-center space-y-2 shadow-lg ${isDarkMode ? 'bg-white/5 border-white/10 shadow-indigo-900/10' : 'bg-white/40 border-white/40 shadow-rose-100'}`}>
-          <Flower2 className={`w-8 h-8 ${streak > 0 ? (isDarkMode ? 'text-pink-400' : 'text-pink-500') : (isDarkMode ? 'text-slate-700' : 'text-slate-400')}`} />
           <span className={`text-2xl font-bold ${isDarkMode ? 'text-indigo-50' : 'text-slate-700'}`}>{streak}</span>
           <span className={`text-xs uppercase tracking-wide font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Current Streak</span>
         </div>
@@ -417,13 +489,14 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
   );
 };
 
-const WriteView = ({ selectedDate, entries, setEntries, setView, dailyPrompt, isDarkMode }) => {
+const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMode, selectedPalette, customPalette }) => {
     // Initialize with selectedDate passed from Calendar/Dashboard
     const [entryDate, setEntryDate] = useState(selectedDate);
     const [text, setText] = useState('');
     const [mood, setMood] = useState(null);
     const [photo, setPhoto] = useState(null);
     const [mattered, setMattered] = useState(false);
+    const [saving, setSaving] = useState(false);
     const fileInputRef = useRef(null);
 
     // Helpers
@@ -445,32 +518,116 @@ const WriteView = ({ selectedDate, entries, setEntries, setView, dailyPrompt, is
       }
     }, [entryDate]);
 
-    const handleSave = () => {
+    const calculateStorageSize = (entries) => {
+      return entries.reduce((total, entry) => {
+        const textSize = new Blob([entry.text || '']).size;
+        const photoSize = entry.photo ? entry.photo.length : 0;
+        return total + textSize + photoSize;
+      }, 0);
+    };
+
+    const handleSave = async () => {
       if (!mood) {
         alert("Please select a mood first");
         return;
       }
-      const newEntry = {
-        date: entryDate,
-        text: text.trim(),
-        mood,
-        photo,
-        mattered,
-        prompt: dailyPrompt,
-        timestamp: Date.now()
-      };
       
-      const filtered = entries.filter(e => e.date !== entryDate);
-      setEntries([...filtered, newEntry]);
-      setView('dashboard');
+      if (!user || !user.uid) {
+        alert("You must be logged in to save entries");
+        return;
+      }
+      
+      // Check storage quota (100MB per user)
+      const MAX_STORAGE_BYTES = 100 * 1024 * 1024; // 100MB
+      const currentSize = calculateStorageSize(entries);
+      const newEntrySize = new Blob([text]).size + (photo ? photo.length : 0);
+      
+      if (currentSize + newEntrySize > MAX_STORAGE_BYTES) {
+        alert('Storage limit reached (100MB). Please delete some entries or photos to continue.');
+        setSaving(false);
+        return;
+      }
+      
+      setSaving(true);
+      
+      try {
+        const newEntry = {
+          date: entryDate,
+          text: text.trim(),
+          mood,
+          photo,
+          mattered,
+          prompt: dailyPrompt,
+          createdAt: new Date().toISOString(), // Track actual creation time
+        };
+        
+        await saveEntry(user.uid, newEntry);
+        setView('dashboard');
+      } catch (error) {
+        console.error('Failed to save entry:', error);
+        alert('Failed to save entry. Please try again.');
+      } finally {
+        setSaving(false);
+      }
     };
 
-    const handlePhoto = (e) => {
+    const compressImage = (file, maxSizeKB = 200) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Resize to max 1200px on longest side
+            const maxDimension = 1200;
+            if (width > height && width > maxDimension) {
+              height = (height * maxDimension) / width;
+              width = maxDimension;
+            } else if (height > maxDimension) {
+              width = (width * maxDimension) / height;
+              height = maxDimension;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Start with quality 0.8 and reduce until under target size
+            let quality = 0.8;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+            
+            while (dataUrl.length > maxSizeKB * 1024 * 1.37 && quality > 0.1) {
+              quality -= 0.1;
+              dataUrl = canvas.toDataURL('image/jpeg', quality);
+            }
+            
+            resolve(dataUrl);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+
+    const handlePhoto = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => setPhoto(reader.result);
-        reader.readAsDataURL(file);
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit for upload
+          alert('Image too large. Please select a smaller image (under 10MB).');
+          return;
+        }
+        
+        try {
+          const compressed = await compressImage(file, 200);
+          setPhoto(compressed);
+        } catch (error) {
+          console.error('Image compression failed:', error);
+          alert('Failed to process image. Please try another.');
+        }
       }
     };
 
@@ -497,17 +654,21 @@ const WriteView = ({ selectedDate, entries, setEntries, setView, dailyPrompt, is
         <div className="flex-1 overflow-y-auto space-y-6 pb-32">
           {/* Mood Selector */}
           <div className="flex justify-between px-2">
-            {MOODS.map((m) => (
-              <button
-                key={m.label}
-                onClick={() => setMood(m.emoji)}
-                className={`flex flex-col items-center space-y-2 transition-transform ${mood === m.emoji ? 'scale-110' : 'opacity-50 hover:opacity-80'}`}
-              >
-                <span className="text-4xl filter drop-shadow-sm">{m.emoji}</span>
-              </button>
-            ))}
+            {(() => {
+              const currentMoods = selectedPalette === 'custom' && customPalette.length > 0 
+                ? customPalette 
+                : MOOD_PALETTES[selectedPalette] || MOOD_PALETTES.emotions;
+              return currentMoods.map((m) => (
+                <button
+                  key={m.label}
+                  onClick={() => setMood(m.emoji)}
+                  className={`flex flex-col items-center space-y-2 transition-transform ${mood === m.emoji ? 'scale-110' : 'opacity-50 hover:opacity-80'}`}
+                >
+                  <span className="text-4xl filter drop-shadow-sm">{m.emoji}</span>
+                </button>
+              ));
+            })()}
           </div>
-          {mood && <p className={`text-center text-sm font-medium animate-in fade-in ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>I am feeling {MOODS.find(m => m.emoji === mood)?.label}</p>}
 
           {/* Text Area */}
           <div className="relative">
@@ -565,10 +726,10 @@ const WriteView = ({ selectedDate, entries, setEntries, setView, dailyPrompt, is
         <div className={`absolute bottom-6 left-6 right-6 p-2 rounded-3xl ${isDarkMode ? 'bg-slate-900/80' : 'bg-white/60'} backdrop-blur-md`}>
            <button 
             onClick={handleSave}
-            disabled={!text || !mood}
-            className={`w-full py-3 rounded-2xl font-medium transition-colors ${text && mood ? (isDarkMode ? 'bg-indigo-500 text-white' : 'bg-rose-400 text-white shadow-md') : (isDarkMode ? 'bg-indigo-900/50 text-indigo-500/50' : 'bg-white/80 text-slate-400 shadow-sm')}`}
+            disabled={!text || !mood || saving}
+            className={`w-full py-3 rounded-2xl font-medium transition-colors ${text && mood && !saving ? (isDarkMode ? 'bg-indigo-500 text-white' : 'bg-rose-400 text-white shadow-md') : (isDarkMode ? 'bg-indigo-900/50 text-indigo-500/50' : 'bg-white/80 text-slate-400 shadow-sm')}`}
           >
-            Save Entry
+            {saving ? 'Saving...' : 'Save Entry'}
           </button>
         </div>
       </div>
@@ -590,7 +751,7 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
       setCurrentMonth(new Date(newDate));
     };
 
-    // Insights Logic
+    // History Logic
     const getDominantMood = (filteredEntries) => {
       if (!filteredEntries || filteredEntries.length === 0) return null;
       const counts = {};
@@ -610,7 +771,7 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
     return (
       <div className="space-y-6 pb-24">
          <div className="flex items-center justify-between">
-           <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>Insights</h2>
+           <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>History</h2>
            <div className="flex space-x-4">
              <button onClick={() => changeMonth(-1)} className={`p-1 rounded-full ${isDarkMode ? 'hover:bg-indigo-800 text-indigo-300' : 'hover:bg-white/50 text-slate-600'}`}><ChevronLeft size={20} /></button>
              <span className={`font-medium w-24 text-center ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>
@@ -649,56 +810,67 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
                    ${isFuture ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
                    ${entry 
                      ? (isDarkMode ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-white/80 shadow-md text-slate-700 hover:scale-105') 
-                     : (isDarkMode ? 'bg-indigo-900/20 text-indigo-800 hover:bg-indigo-900/40' : 'bg-white/30 text-slate-500 hover:bg-white/50')
+                     : (isDarkMode ? 'bg-indigo-900/20 text-indigo-200 hover:bg-indigo-900/40' : 'bg-white/30 text-slate-500 hover:bg-white/50')
                    } ${isToday ? (isDarkMode ? 'ring-2 ring-indigo-400' : 'ring-2 ring-rose-400') : ''}`}
                >
                  {entry ? <span className="text-xl">{entry.mood}</span> : day}
-                 {entry?.mattered && <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-amber-400 rounded-full" />}
+                 {entry?.mattered && <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-amber-400 rounded-full" />}
                </button>
              );
            })}
          </div>
 
-         {/* --- INSIGHTS SECTION --- */}
+         {/* --- HISTORY SECTION --- */}
          <div className="grid grid-cols-1 gap-3 mt-4">
-            {/* Last 30 Days Card */}
-            <div className={`p-4 rounded-2xl border backdrop-blur-md flex items-center justify-between ${isDarkMode ? 'bg-white/5 border-white/10 shadow-lg' : 'bg-white/40 border-white/50 shadow-rose-100'}`}>
-                <div>
-                <h4 className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Last 30 Days</h4>
-                    <p className={`text-sm font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>
-                        {lastMonthVibe 
-                          ? `You were mostly ${lastMonthVibe.label} ${lastMonthVibe.emoji}` 
-                    : "No data recorded"}
-                    </p>
-                </div>
-                <div className="text-2xl">{lastMonthVibe?.emoji || '—'}</div>
-            </div>
          </div>
 
-         {/* Palette Section */}
+         {/* Palette Section - Show ALL emojis ever used */}
          <div className={`p-4 rounded-2xl border backdrop-blur-md mt-3 ${isDarkMode ? 'bg-white/5 border-white/10 shadow-lg' : 'bg-white/40 border-white/50 shadow-rose-100'}`}>
            <h4 className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Your Palette</h4>
            <div className="flex justify-between items-end h-16 space-x-2">
-             {MOODS.map(m => {
-               const count = entries.filter(e => e.mood === m.emoji).length;
-               const height = Math.max(10, count * 5) + '%';
-               return (
-                 <div key={m.emoji} className="flex-1 flex flex-col items-center space-y-2 group">
-                   <div className={`w-full rounded-t-lg relative ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`} style={{ height }}>
-                      <div className={`absolute bottom-0 w-full rounded-lg transition-all duration-500 opacity-50 ${isDarkMode ? m.darkColor.split(' ')[0] : m.color.split(' ')[0]} h-full`} />
+             {(() => {
+               // Get all unique emojis from entries
+               const emojiCounts = {};
+               entries.forEach(e => {
+                 if (e.mood) {
+                   emojiCounts[e.mood] = (emojiCounts[e.mood] || 0) + 1;
+                 }
+               });
+               
+               // Sort by count descending
+               const sortedEmojis = Object.entries(emojiCounts).sort((a, b) => b[1] - a[1]);
+               
+               // If no entries, show current palette
+               if (sortedEmojis.length === 0) {
+                 return MOODS.map(m => (
+                   <div key={m.emoji} className="flex-1 flex flex-col items-center space-y-2">
+                     <div className={`w-full rounded-t-lg ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`} style={{ height: '10%' }} />
+                     <span className="text-lg opacity-30">{m.emoji}</span>
+                     <span className={`text-[10px] font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-400'}`}>0</span>
                    </div>
-                   <span className="text-lg">{m.emoji}</span>
-                   <span className={`text-[10px] font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-400'}`}>{count}</span>
-                 </div>
-               );
-             })}
+                 ));
+               }
+               
+               return sortedEmojis.map(([emoji, count]) => {
+                 const height = Math.max(10, count * 5) + '%';
+                 return (
+                   <div key={emoji} className="flex-1 flex flex-col items-center space-y-2 group">
+                     <div className={`w-full rounded-t-lg relative ${isDarkMode ? 'bg-white/10' : 'bg-white/50'}`} style={{ height }}>
+                        <div className={`absolute bottom-0 w-full rounded-lg transition-all duration-500 opacity-50 ${isDarkMode ? 'bg-indigo-500/30' : 'bg-rose-200/50'} h-full`} />
+                     </div>
+                     <span className="text-lg">{emoji}</span>
+                     <span className={`text-[10px] font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-400'}`}>{count}</span>
+                   </div>
+                 );
+               });
+             })()}
            </div>
          </div>
       </div>
     );
 };
 
-const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout }) => {
+const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, selectedPalette, setSelectedPalette, customPalette, setCustomPalette }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(user?.name || '');
     const fileInputRef = useRef(null);
@@ -789,19 +961,42 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout })
           
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
+          {/* Emoji Palette Button */}
+          <button
+            onClick={() => setShowPaletteModal(true)}
+            className={`mx-4 p-4 rounded-2xl border flex items-center justify-between transition-colors ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white/60 border-white/40 hover:bg-white/80'}`}
+          >
+            <div className={`flex items-center space-x-3 ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>
+              <Palette size={20} />
+              <div className="text-left">
+                <div className="font-medium text-sm">Emoji Palette</div>
+                <div className={`text-xs ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
+                  {selectedPalette === 'emotions' && 'Emotions'}
+                  {selectedPalette === 'colors' && 'Colors'}
+                  {selectedPalette === 'animals' && 'Animals'}
+                  {selectedPalette === 'custom' && 'Custom (DIY)'}
+                </div>
+              </div>
+            </div>
+            <div className="flex space-x-1 text-lg">
+              {selectedPalette === 'custom' && customPalette.length > 0 ? 
+                customPalette.map((m, i) => <span key={i}>{m.emoji}</span>) :
+                MOOD_PALETTES[selectedPalette]?.map((m, i) => <span key={i}>{m.emoji}</span>)
+              }
+            </div>
+          </button>
+
+          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
+
           {/* Contact Developer */}
           <button
             onClick={async () => {
               try {
-                const { completed } = await AppLauncher.openUrl({ 
+                await AppLauncher.openUrl({ 
                   url: 'mailto:hello@walruscreativeworks.com' 
                 });
-                if (!completed) {
-                  alert('Email: hello@walruscreativeworks.com\n\nMail app not available in simulator. This will work on a real device!');
-                }
               } catch (error) {
                 console.error('Failed to open email:', error);
-                alert('Email: hello@walruscreativeworks.com\n\nMail app not available in simulator. This will work on a real device!');
               }
             }}
             className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
@@ -828,7 +1023,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout })
             Privacy Policy
           </a>
           <p className={`${isDarkMode ? 'text-indigo-300/70' : 'text-slate-400'} text-[10px] mt-2 leading-snug`}>
-            Your journal entries are completely private. Only you can access your entries. Not even the app creator or admins can view, read, or open them. The only information we can see is your email address and the name you provided when signing up, nothing more. This space is designed to be safe, secure, and just for you.
+            Your entries are private and secured. Only you can access them through the app. We do not access user entries except when necessary for technical support or legal compliance, with your explicit consent.
           </p>
         </div>
       </div>
@@ -837,86 +1032,194 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout })
 
 const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
     const [showMatteredOnly, setShowMatteredOnly] = useState(false);
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+    const [selectedMoodFilter, setSelectedMoodFilter] = useState(null);
+    
+    // Get all unique moods from entries
+    const allMoods = [...new Set(entries.map(e => e.mood))];
     
     // Logic
     const sortedEntries = [...entries]
-        .filter(e => showMatteredOnly ? e.mattered : true)
+        .filter(e => {
+          if (showMatteredOnly && !e.mattered) return false;
+          if (dateFrom && e.date < dateFrom) return false;
+          if (dateTo && e.date > dateTo) return false;
+          if (selectedMoodFilter && e.mood !== selectedMoodFilter) return false;
+          return true;
+        })
         .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // PDF Generator
-    const generatePDF = () => {
+    // PDF Generator - iOS compatible version using native share
+    const generatePDF = async () => {
         if (sortedEntries.length === 0) {
           alert("No entries to export!");
           return;
         }
-        const printWindow = window.open('', '', 'height=600,width=800');
-        if (!printWindow) { alert("Please allow popups"); return; }
-        const htmlContent = `
-          <html>
-            <head>
-              <title>My Journal</title>
-              <style>
-                body { font-family: 'Georgia', serif; padding: 40px; color: #333; }
-                .entry { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
-                .date { color: #666; font-size: 14px; text-transform: uppercase; font-weight: bold; }
-                .mood { font-size: 20px; }
-                .text { font-size: 18px; line-height: 1.5; font-style: italic; margin-top: 10px; }
-              </style>
-            </head>
-            <body>
-              <h1 style="text-align:center;color:#e11d48">My One Sentence Journal</h1>
-              ${sortedEntries.map(e => `
-                <div class="entry">
-                  <div><span class="date">${new Date(e.date).toLocaleDateString()}</span> <span class="mood">${e.mood}</span> ${e.mattered ? '⭐' : ''}</div>
-                  <div class="text">"${e.text}"</div>
-                </div>
-              `).join('')}
-              <script>window.onload = function() { window.print(); }</script>
-            </body>
-          </html>
-        `;
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
+        
+        const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <title>My Journal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: 'Georgia', serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+    .entry { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; page-break-inside: avoid; }
+    .date { color: #666; font-size: 14px; text-transform: uppercase; font-weight: bold; }
+    .mood { font-size: 20px; }
+    .text { font-size: 18px; line-height: 1.5; font-style: italic; margin-top: 10px; }
+    @media print {
+      body { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <h1 style="text-align:center;color:#e11d48">My One Sentence Journal</h1>
+  ${sortedEntries.map(e => `
+    <div class="entry">
+      <div><span class="date">${new Date(e.date).toLocaleDateString()}</span> <span class="mood">${e.mood}</span> ${e.mattered ? '⭐' : ''}</div>
+      <div class="text">"${e.text}"</div>
+    </div>
+  `).join('')}
+  <script>
+    // Auto-print on web
+    if (!window.Capacitor) {
+      window.onload = function() { window.print(); }
+    }
+  </script>
+</body>
+</html>`;
+        
+        if (Capacitor.isNativePlatform()) {
+          // For iOS: Create a data URL and open in browser for printing
+          try {
+            const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+            await AppLauncher.openUrl({ url: dataUrl });
+          } catch (error) {
+            console.error('Failed to open:', error);
+            alert("Unable to open export. Please try again.");
+          }
+        } else {
+          // Web version: open in new window with print dialog
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+          } else {
+            alert("Please allow popups to export PDF");
+          }
+        }
     };
 
     return (
       <div className="space-y-6 pb-24">
+        {/* Header with PDF */}
         <div className="flex justify-between items-center">
           <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>Entries</h2>
-          <button 
-            onClick={generatePDF}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-transform hover:scale-105 ${isDarkMode ? 'bg-indigo-600 text-white' : 'bg-white text-rose-500 shadow-sm'}`}
-          >
-            <Download size={14} />
-            <span>PDF</span>
-          </button>
-        </div>
-        
-        {/* Filter Toggle */}
-        <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2">
             <button 
                 onClick={() => setShowMatteredOnly(!showMatteredOnly)}
-                className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${showMatteredOnly ? 'bg-rose-400 text-white shadow-lg shadow-rose-200' : (isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-500')}`}
+                className={`px-3 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-colors ${showMatteredOnly ? 'bg-rose-400 text-white shadow-lg shadow-rose-200' : (isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-500')}`}
             >
-                {showMatteredOnly ? 'Showing: Core Memories' : 'Filter: Core Memories'} {showMatteredOnly && <X size={12} className="inline ml-1" />}
+                {showMatteredOnly ? '⭐' : 'Filter ⭐'} {showMatteredOnly && <X size={12} className="inline ml-1" />}
             </button>
+            <button 
+              onClick={generatePDF}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-transform hover:scale-105 ${isDarkMode ? 'bg-indigo-600 text-white' : 'bg-white text-rose-500 shadow-sm'}`}
+            >
+              <Download size={14} />
+              <span>PDF</span>
+            </button>
+          </div>
+        </div>
+        
+        {/* Filters Section */}
+        <div className="space-y-3">
+            {/* Date Range Filter */}
+            <div className={`p-3 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
+              <div className="flex items-center space-x-2">
+                <span className={`text-xs font-medium whitespace-nowrap ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Filter by date:</span>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  placeholder="From"
+                  className={`flex-1 px-2 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
+                />
+                <span className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>to</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  placeholder="To"
+                  className={`flex-1 px-2 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
+                />
+                {(dateFrom || dateTo) && (
+                  <button
+                    onClick={() => { setDateFrom(''); setDateTo(''); }}
+                    className={`p-1.5 rounded-lg ${isDarkMode ? 'bg-white/10 text-indigo-300 hover:bg-white/20' : 'bg-white/80 text-slate-500 hover:bg-white'}`}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            {/* Mood Filter */}
+            {allMoods.length > 0 && (
+              <div className={`p-3 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
+                <div className="flex items-center space-x-2 mb-2">
+                  <span className={`text-xs font-medium ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>Filter by mood:</span>
+                  {selectedMoodFilter && (
+                    <button
+                      onClick={() => setSelectedMoodFilter(null)}
+                      className={`text-xs ${isDarkMode ? 'text-indigo-400 hover:text-indigo-300' : 'text-rose-500 hover:text-rose-600'}`}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {allMoods.map(mood => (
+                    <button
+                      key={mood}
+                      onClick={() => setSelectedMoodFilter(selectedMoodFilter === mood ? null : mood)}
+                      className={`text-2xl p-2 rounded-xl transition-all ${selectedMoodFilter === mood ? (isDarkMode ? 'bg-indigo-500/30 ring-2 ring-indigo-400' : 'bg-rose-100 ring-2 ring-rose-300') : (isDarkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/50 hover:bg-white/70')}`}
+                    >
+                      {mood}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
         </div>
 
         <div className="space-y-4">
           {sortedEntries.map(entry => (
             <div 
               key={entry.date} 
-              onClick={() => { setSelectedDate(entry.date); setView('details'); }}
-              className={`p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-transform hover:scale-[1.02] active:scale-95 shadow-sm ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white/40 border-white/40 hover:bg-white/60 shadow-rose-100'}`}
+              className={`relative p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-transform hover:scale-[1.02] active:scale-95 shadow-sm ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white/40 border-white/40 hover:bg-white/60 shadow-rose-100'}`}
             >
-              <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">{entry.mood}</span>
-                  <span className={`text-sm font-bold ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>{getDayName(entry.date)}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedDate(entry.date);
+                  setView('write');
+                }}
+                className={`absolute top-3 right-3 p-1.5 rounded-full transition-colors ${isDarkMode ? 'bg-white/10 hover:bg-white/20 text-indigo-300' : 'bg-white/60 hover:bg-white/80 text-slate-600'}`}
+              >
+                <Edit2 size={14} />
+              </button>
+              <div onClick={() => { setSelectedDate(entry.date); setView('details'); }}>
+                <div className="flex justify-between items-start mb-2 pr-8">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">{entry.mood}</span>
+                    <span className={`text-sm font-bold ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>{getDayName(entry.date)}</span>
+                  </div>
+                  {entry.mattered && <Star size={14} className="text-amber-400" fill="currentColor" />}
                 </div>
-                {entry.mattered && <Star size={14} className="text-amber-400" fill="currentColor" />}
+                <p className={`text-sm font-serif italic truncate ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{entry.text}</p>
               </div>
-              <p className={`text-sm font-serif italic truncate ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{entry.text}</p>
             </div>
           ))}
           {sortedEntries.length === 0 && (
@@ -942,9 +1245,17 @@ const EntryDetailView = ({ entries, selectedDate, setView, isDarkMode }) => {
             <ChevronLeft />
           </button>
           <span className={`text-xs font-bold tracking-widest uppercase ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>{entry.date}</span>
-          <button onClick={() => alert("Sharing...")} className={`p-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
-            <Share size={18} />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button 
+              onClick={() => { setView('write'); }}
+              className={`p-2 ${isDarkMode ? 'text-indigo-300 hover:bg-white/10' : 'text-slate-600 hover:bg-white/60'} rounded-full transition-colors`}
+            >
+              <Edit2 size={18} />
+            </button>
+            <button onClick={() => alert("Sharing...")} className={`p-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
+              <Share size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-8 pb-20">
@@ -960,7 +1271,6 @@ const EntryDetailView = ({ entries, selectedDate, setView, isDarkMode }) => {
            </div>
 
            <div className={`p-8 rounded-[2rem] shadow-sm border backdrop-blur-xl ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/60 shadow-rose-100'}`}>
-             <p className={`text-sm mb-4 font-medium uppercase tracking-widest ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>{entry.prompt}</p>
              <p className={`text-2xl font-serif leading-relaxed italic ${isDarkMode ? 'text-indigo-100' : 'text-slate-800'}`}>"{entry.text}"</p>
            </div>
 
@@ -974,6 +1284,303 @@ const EntryDetailView = ({ entries, selectedDate, setView, isDarkMode }) => {
     );
 };
 
+// --- Palette Modal Component ---
+
+const PaletteModal = ({ show, onClose, selectedPalette, setSelectedPalette, customPalette, setCustomPalette, isDarkMode, MOOD_PALETTES, onEditCustom }) => {
+  if (!show) return null;
+
+  const handlePaletteSelect = (palette) => {
+    if (palette === 'custom') {
+      if (customPalette.length === 0) {
+        const defaultCustom = [
+          { emoji: '⭐', label: 'Star', color: 'bg-yellow-100 text-yellow-600', darkColor: 'bg-yellow-900/30 text-yellow-300' },
+          { emoji: '💎', label: 'Diamond', color: 'bg-cyan-100 text-cyan-600', darkColor: 'bg-cyan-900/30 text-cyan-300' },
+          { emoji: '🌸', label: 'Blossom', color: 'bg-pink-100 text-pink-600', darkColor: 'bg-pink-900/30 text-pink-300' },
+          { emoji: '🍃', label: 'Leaf', color: 'bg-green-100 text-green-600', darkColor: 'bg-green-900/30 text-green-300' },
+          { emoji: '🌙', label: 'Moon', color: 'bg-indigo-100 text-indigo-600', darkColor: 'bg-indigo-900/30 text-indigo-300' }
+        ];
+        setCustomPalette(defaultCustom);
+        localStorage.setItem('journal_custom_palette', JSON.stringify(defaultCustom));
+      }
+      setSelectedPalette('custom');
+      localStorage.setItem('journal_palette', 'custom');
+      // Don't close modal, show edit button
+      return;
+    }
+    setSelectedPalette(palette);
+    localStorage.setItem('journal_palette', palette);
+    onClose();
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className={`absolute inset-0 ${isDarkMode ? 'bg-black/60' : 'bg-black/30'} backdrop-blur-sm`} />
+      
+      {/* Modal */}
+      <div 
+        className={`relative w-full max-w-md rounded-3xl shadow-2xl p-6 ${isDarkMode ? 'bg-slate-900 border border-white/10' : 'bg-white border border-slate-200'}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className={`flex items-center space-x-3 ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>
+            <Palette size={24} />
+            <h3 className="text-xl font-medium">Choose Your Palette</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-white/10 text-indigo-300' : 'hover:bg-slate-100 text-slate-500'}`}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Palette Options */}
+        <div className="space-y-3">
+          <button
+            onClick={() => handlePaletteSelect('emotions')}
+            className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${selectedPalette === 'emotions' ? (isDarkMode ? 'bg-indigo-500/30 border-2 border-indigo-400 shadow-lg' : 'bg-rose-100 border-2 border-rose-300 shadow-md') : (isDarkMode ? 'bg-white/5 hover:bg-white/10 border-2 border-transparent' : 'bg-white/50 hover:bg-white/70 border-2 border-transparent')}`}
+          >
+            <span className={`text-base font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>Emotions</span>
+            <div className="flex space-x-2 text-2xl">{MOOD_PALETTES.emotions.map((m, i) => <span key={i}>{m.emoji}</span>)}</div>
+          </button>
+          <button
+            onClick={() => handlePaletteSelect('colors')}
+            className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${selectedPalette === 'colors' ? (isDarkMode ? 'bg-indigo-500/30 border-2 border-indigo-400 shadow-lg' : 'bg-rose-100 border-2 border-rose-300 shadow-md') : (isDarkMode ? 'bg-white/5 hover:bg-white/10 border-2 border-transparent' : 'bg-white/50 hover:bg-white/70 border-2 border-transparent')}`}
+          >
+            <span className={`text-base font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>Colors</span>
+            <div className="flex space-x-2 text-2xl">{MOOD_PALETTES.colors.map((m, i) => <span key={i}>{m.emoji}</span>)}</div>
+          </button>
+          <button
+            onClick={() => handlePaletteSelect('animals')}
+            className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${selectedPalette === 'animals' ? (isDarkMode ? 'bg-indigo-500/30 border-2 border-indigo-400 shadow-lg' : 'bg-rose-100 border-2 border-rose-300 shadow-md') : (isDarkMode ? 'bg-white/5 hover:bg-white/10 border-2 border-transparent' : 'bg-white/50 hover:bg-white/70 border-2 border-transparent')}`}
+          >
+            <span className={`text-base font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>Animals</span>
+            <div className="flex space-x-2 text-2xl">{MOOD_PALETTES.animals.map((m, i) => <span key={i}>{m.emoji}</span>)}</div>
+          </button>
+          <button
+            onClick={() => handlePaletteSelect('custom')}
+            className={`w-full p-4 rounded-2xl flex items-center justify-between transition-all ${selectedPalette === 'custom' ? (isDarkMode ? 'bg-indigo-500/30 border-2 border-indigo-400 shadow-lg' : 'bg-rose-100 border-2 border-rose-300 shadow-md') : (isDarkMode ? 'bg-white/5 hover:bg-white/10 border-2 border-transparent' : 'bg-white/50 hover:bg-white/70 border-2 border-transparent')}`}
+          >
+            <span className={`text-base font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>Custom (DIY)</span>
+            <div className="flex space-x-2 text-2xl">
+              {customPalette.length > 0 ? 
+                customPalette.map((m, i) => <span key={i}>{m.emoji}</span>) : 
+                <span className={`text-xs ${isDarkMode ? 'text-indigo-300/50' : 'text-slate-400'}`}>Tap to create</span>
+              }
+            </div>
+          </button>
+        </div>
+
+        {selectedPalette === 'custom' && customPalette.length > 0 && (
+          <button
+            onClick={() => {
+              onEditCustom();
+              onClose();
+            }}
+            className={`w-full mt-4 p-4 rounded-2xl border-2 border-dashed transition-colors ${isDarkMode ? 'border-indigo-400/50 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-200' : 'border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700'}`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <Edit2 size={18} />
+              <span className="font-medium">Customize Your 5 Emojis</span>
+            </div>
+          </button>
+        )}
+
+        <p className={`mt-6 text-xs text-center ${isDarkMode ? 'text-indigo-300/70' : 'text-slate-500'}`}>
+          Your palette will be used for mood tracking in journal entries
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// --- Emoji Picker Modal Component ---
+
+const EmojiPickerModal = ({ show, onClose, customPalette, setCustomPalette, isDarkMode }) => {
+  const [selectedEmojis, setSelectedEmojis] = useState([]);
+  const [showPicker, setShowPicker] = useState(false);
+
+  useEffect(() => {
+    if (show) {
+      setSelectedEmojis(customPalette.map(p => p.emoji));
+    }
+  }, [show, customPalette]);
+
+  if (!show) return null;
+
+  const handleEmojiClick = (emojiData) => {
+    if (selectedEmojis.length < 5 && !selectedEmojis.includes(emojiData.emoji)) {
+      setSelectedEmojis([...selectedEmojis, emojiData.emoji]);
+    }
+    setShowPicker(false);
+  };
+
+  const removeEmoji = (index) => {
+    setSelectedEmojis(selectedEmojis.filter((_, i) => i !== index));
+  };
+
+  const handleSave = () => {
+    if (selectedEmojis.length !== 5) {
+      alert('Please select exactly 5 emojis');
+      return;
+    }
+
+    const colorOptions = [
+      { color: 'bg-red-100 text-red-600', darkColor: 'bg-red-900/30 text-red-300' },
+      { color: 'bg-orange-100 text-orange-600', darkColor: 'bg-orange-900/30 text-orange-300' },
+      { color: 'bg-yellow-100 text-yellow-600', darkColor: 'bg-yellow-900/30 text-yellow-300' },
+      { color: 'bg-green-100 text-green-600', darkColor: 'bg-green-900/30 text-green-300' },
+      { color: 'bg-blue-100 text-blue-600', darkColor: 'bg-blue-900/30 text-blue-300' },
+      { color: 'bg-indigo-100 text-indigo-600', darkColor: 'bg-indigo-900/30 text-indigo-300' },
+      { color: 'bg-purple-100 text-purple-600', darkColor: 'bg-purple-900/30 text-purple-300' },
+      { color: 'bg-pink-100 text-pink-600', darkColor: 'bg-pink-900/30 text-pink-300' },
+      { color: 'bg-cyan-100 text-cyan-600', darkColor: 'bg-cyan-900/30 text-cyan-300' }
+    ];
+
+    const newPalette = selectedEmojis.map((emoji, index) => ({
+      emoji,
+      label: `Mood ${index + 1}`,
+      ...colorOptions[index % colorOptions.length]
+    }));
+
+    setCustomPalette(newPalette);
+    localStorage.setItem('journal_custom_palette', JSON.stringify(newPalette));
+    onClose();
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className={`absolute inset-0 ${isDarkMode ? 'bg-black/60' : 'bg-black/30'} backdrop-blur-sm`} />
+      
+      {/* Modal */}
+      <div 
+        className={`relative w-full max-w-md rounded-3xl shadow-2xl p-6 ${isDarkMode ? 'bg-slate-900 border border-white/10' : 'bg-white border border-slate-200'}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className={`flex items-center space-x-3 ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>
+            <Palette size={24} />
+            <h3 className="text-xl font-medium">Pick 5 Emojis</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-white/10 text-indigo-300' : 'hover:bg-slate-100 text-slate-500'}`}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Selected Emojis Display */}
+        <div className={`p-4 rounded-2xl mb-4 ${isDarkMode ? 'bg-white/5 border border-white/10' : 'bg-slate-50 border border-slate-200'}`}>
+          <div className="flex items-center justify-between mb-3">
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-indigo-200' : 'text-slate-700'}`}>
+              Selected ({selectedEmojis.length}/5)
+            </span>
+            {selectedEmojis.length > 0 && (
+              <button
+                onClick={() => setSelectedEmojis([])}
+                className={`text-xs ${isDarkMode ? 'text-indigo-400 hover:text-indigo-300' : 'text-rose-500 hover:text-rose-600'}`}
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          <div className="flex space-x-2">
+            {[...Array(5)].map((_, index) => (
+              <div
+                key={index}
+                className={`flex-1 h-16 rounded-xl flex items-center justify-center text-3xl relative ${isDarkMode ? 'bg-white/5 border border-white/10' : 'bg-white border border-slate-200'}`}
+              >
+                {selectedEmojis[index] ? (
+                  <>
+                    <span>{selectedEmojis[index]}</span>
+                    <button
+                      onClick={() => removeEmoji(index)}
+                      className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center ${isDarkMode ? 'bg-rose-500 text-white' : 'bg-rose-500 text-white'} shadow-lg`}
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <span className={`text-2xl ${isDarkMode ? 'text-white/20' : 'text-slate-300'}`}>?</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Add Emoji Button */}
+        {selectedEmojis.length < 5 && !showPicker && (
+          <button
+            onClick={() => setShowPicker(true)}
+            className={`w-full p-4 rounded-2xl border-2 border-dashed transition-colors mb-4 ${isDarkMode ? 'border-indigo-400/50 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-200' : 'border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700'}`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <Plus size={20} />
+              <span className="font-medium">Add Emoji</span>
+            </div>
+          </button>
+        )}
+
+        {/* Emoji Picker */}
+        {showPicker && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-sm ${isDarkMode ? 'text-indigo-200' : 'text-slate-700'}`}>Choose an emoji:</span>
+              <button
+                onClick={() => setShowPicker(false)}
+                className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="rounded-2xl overflow-hidden">
+              <EmojiPicker
+                onEmojiClick={handleEmojiClick}
+                width="100%"
+                height="350px"
+                theme={isDarkMode ? 'dark' : 'light'}
+                searchPlaceHolder="Search emojis..."
+                previewConfig={{ showPreview: false }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex space-x-3">
+          <button
+            onClick={onClose}
+            className={`flex-1 py-3 rounded-2xl font-medium transition-colors ${isDarkMode ? 'bg-white/5 text-indigo-300 hover:bg-white/10' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={selectedEmojis.length !== 5}
+            className={`flex-1 py-3 rounded-2xl font-medium transition-colors ${selectedEmojis.length === 5 ? (isDarkMode ? 'bg-indigo-500 text-white hover:bg-indigo-600' : 'bg-rose-500 text-white hover:bg-rose-600') : (isDarkMode ? 'bg-white/10 text-white/30 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed')}`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              <Check size={18} />
+              <span>Save Palette</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App Component ---
 
 const App = () => {
@@ -983,7 +1590,11 @@ const App = () => {
   const [view, setView] = useState('loading'); 
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date())); 
   const [dailyPrompt, setDailyPrompt] = useState('');
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [selectedPalette, setSelectedPalette] = useState('emotions'); // emotions, colors, animals, custom
+  const [customPalette, setCustomPalette] = useState([]);
+  const [showPaletteModal, setShowPaletteModal] = useState(false);
+  const [showEmojiPickerModal, setShowEmojiPickerModal] = useState(false);
 
   // Auth State
   const [authMode, setAuthMode] = useState('login');
@@ -994,58 +1605,112 @@ const App = () => {
   const [signupPassword, setSignupPassword] = useState('');
   const [isAuthBusy, setIsAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState(null);
+  const [showEmailVerificationPrompt, setShowEmailVerificationPrompt] = useState(false);
+  
+  // Rate limiters
+  const authRateLimiterRef = useRef(new RateLimiter(5, 15 * 60 * 1000)); // 5 attempts per 15 minutes
 
   useEffect(() => {
     console.log('🟢 Current view:', view);
     console.log('🟢 Current user:', user ? user.email : 'No user');
   }, [view]);
 
+  // Initialize GoogleAuth on iOS
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      GoogleAuth.initialize({
+        clientId: '300506798842-vpve57mlcv9k13vjlek31n5d1t6j7lun.apps.googleusercontent.com',
+        scopes: ['profile', 'email'],
+        grantOfflineAccess: true
+      });
+    }
+  }, []);
+
   // Load data & settings
   useEffect(() => {
     setDailyPrompt(PROMPTS[Math.floor(Math.random() * PROMPTS.length)]);
     const savedTheme = localStorage.getItem('journal_theme');
-    if (savedTheme === 'dark') setIsDarkMode(true);
+    if (savedTheme === 'light') setIsDarkMode(false);
+    
+    const savedPalette = localStorage.getItem('journal_palette');
+    if (savedPalette) setSelectedPalette(savedPalette);
+    
+    const savedCustomPalette = localStorage.getItem('journal_custom_palette');
+    if (savedCustomPalette) {
+      try {
+        setCustomPalette(JSON.parse(savedCustomPalette));
+      } catch (e) {
+        console.error('Failed to parse custom palette:', e);
+      }
+    }
   }, []);
 
   // Sync authentication state with Firebase
   useEffect(() => {
     console.log('Setting up Firebase auth listener...');
     let authFired = false;
+    let unsubscribeEntries = null;
     
-    // Check for redirect result first (Google Sign-In on iOS)
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result?.user) {
-          console.log('Google Sign-In redirect successful');
-          if (!result.user.emailVerified) {
-            sendEmailVerification(result.user).catch(console.error);
-          }
-        }
-      })
-      .catch((error) => {
-        console.error('Redirect result error:', error);
-      });
-    
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('Firebase auth state changed:', firebaseUser ? 'User logged in' : 'No user');
       authFired = true;
+      
       if (firebaseUser) {
         setUser({
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Dreamer',
           avatar: firebaseUser.photoURL,
+          emailVerified: firebaseUser.emailVerified,
         });
         setLoginEmail(firebaseUser.email || '');
         setLoginPassword('');
         setAuthMode('login');
         setAuthMessage(null);
+        
+        // Check email verification
+        if (!firebaseUser.emailVerified) {
+          setShowEmailVerificationPrompt(true);
+        }
+        
+        // Subscribe to real-time Firestore updates
+        unsubscribeEntries = subscribeToEntries(firebaseUser.uid, (entries) => {
+          console.log('Loaded', entries.length, 'entries from Firestore');
+          setEntries(entries);
+        });
+        
+        // One-time migration: move localStorage entries to Firestore
+        const storageKey = `journal_entries_${firebaseUser.uid}`;
+        const localEntries = localStorage.getItem(storageKey);
+        if (localEntries) {
+          try {
+            const parsed = JSON.parse(localEntries);
+            if (parsed.length > 0) {
+              console.log('Migrating', parsed.length, 'entries to Firestore...');
+              const result = await migrateLocalEntries(firebaseUser.uid, parsed);
+              console.log('Migration complete:', result);
+              // Clear localStorage after successful migration
+              localStorage.removeItem(storageKey);
+            }
+          } catch (error) {
+            console.error('Migration failed:', error);
+          }
+        }
+        
         setView('dashboard');
       } else {
         setUser(null);
         setEntries([]);
         setAuthMode('login');
         setLoginPassword('');
+        setShowEmailVerificationPrompt(false);
+        
+        // Unsubscribe from entries when logged out
+        if (unsubscribeEntries) {
+          unsubscribeEntries();
+          unsubscribeEntries = null;
+        }
+        
         setView('auth');
       }
     }, (error) => {
@@ -1064,35 +1729,14 @@ const App = () => {
 
     return () => {
       unsubscribe();
+      if (unsubscribeEntries) {
+        unsubscribeEntries();
+      }
       clearTimeout(timeout);
     };
   }, []);
 
-  // Load entries when the authenticated user changes
-  useEffect(() => {
-    if (!user) return;
-    const storageKey = `journal_entries_${user.uid}`;
-    const savedEntries = localStorage.getItem(storageKey);
-
-    if (savedEntries) {
-      try {
-        setEntries(JSON.parse(savedEntries));
-      } catch (error) {
-        console.warn('Failed to parse saved entries', error);
-        setEntries([]);
-      }
-    } else {
-      setEntries([]);
-    }
-  }, [user]);
-
-  // Persist entries per user
-  useEffect(() => {
-    if (!user) return;
-    const storageKey = `journal_entries_${user.uid}`;
-    localStorage.setItem(storageKey, JSON.stringify(entries));
-  }, [entries, user]);
-
+  // Theme persistence
   useEffect(() => {
     localStorage.setItem('journal_theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
@@ -1131,15 +1775,32 @@ const App = () => {
     const passwordValue = loginPassword.trim();
 
     setAuthMessage(null);
+    
+    // Validate email
+    const emailValidation = validateEmail(trimmedEmail);
+    if (!emailValidation.isValid) {
+      setAuthMessage({ type: 'error', text: emailValidation.error });
+      return;
+    }
 
-    if (!trimmedEmail || !passwordValue) {
-      setAuthMessage({ type: 'error', text: 'Enter your email and password to continue.' });
+    if (!passwordValue) {
+      setAuthMessage({ type: 'error', text: 'Enter your password to continue.' });
+      return;
+    }
+    
+    // Check rate limit
+    const rateLimit = authRateLimiterRef.current.checkLimit(trimmedEmail);
+    if (!rateLimit.allowed) {
+      const minutes = Math.ceil((rateLimit.resetTime - Date.now()) / 60000);
+      setAuthMessage({ type: 'error', text: `Too many attempts. Please wait ${minutes} minute(s) before trying again.` });
       return;
     }
 
     setIsAuthBusy(true);
     try {
       await signInWithEmailAndPassword(auth, trimmedEmail, passwordValue);
+      // Reset rate limit on successful login
+      authRateLimiterRef.current.reset(trimmedEmail);
       setAuthMessage({ type: 'success', text: 'Signed in successfully.' });
     } catch (error) {
       setAuthMessage({ type: 'error', text: describeAuthError(error) });
@@ -1152,29 +1813,38 @@ const App = () => {
   const handleSignUp = async (e) => {
     e.preventDefault();
     console.log('Sign-up clicked');
-    const trimmedName = signupName.trim();
-    const trimmedEmail = signupEmail.trim().toLowerCase();
-    const passwordValue = signupPassword.trim();
-
+    
     setAuthMessage(null);
 
-    if (!trimmedName) {
-      setAuthMessage({ type: 'error', text: 'Please enter your name so we know how to greet you.' });
+    // Validate name
+    const nameValidation = validateName(signupName);
+    if (!nameValidation.isValid) {
+      setAuthMessage({ type: 'error', text: nameValidation.error });
       return;
     }
+    const trimmedName = nameValidation.sanitized;
 
-    if (trimmedName.length > 24) {
-      setAuthMessage({ type: 'error', text: 'Name must be 24 characters or fewer.' });
+    // Validate email
+    const emailValidation = validateEmail(signupEmail);
+    if (!emailValidation.isValid) {
+      setAuthMessage({ type: 'error', text: emailValidation.error });
       return;
     }
+    const trimmedEmail = signupEmail.trim().toLowerCase();
 
-    if (!trimmedEmail) {
-      setAuthMessage({ type: 'error', text: 'Please enter a valid email address.' });
+    // Validate password strength
+    const passwordValidation = validatePassword(signupPassword);
+    if (!passwordValidation.isValid) {
+      setAuthMessage({ type: 'error', text: passwordValidation.error });
       return;
     }
-
-    if (passwordValue.length < 6) {
-      setAuthMessage({ type: 'error', text: 'Password must be at least six characters long.' });
+    const passwordValue = signupPassword.trim();
+    
+    // Check rate limit
+    const rateLimit = authRateLimiterRef.current.checkLimit(trimmedEmail);
+    if (!rateLimit.allowed) {
+      const minutes = Math.ceil((rateLimit.resetTime - Date.now()) / 60000);
+      setAuthMessage({ type: 'error', text: `Too many attempts. Please wait ${minutes} minute(s) before trying again.` });
       return;
     }
 
@@ -1183,6 +1853,7 @@ const App = () => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, passwordValue);
       console.log('Account created:', userCredential.user.uid);
+      
       if (trimmedName && userCredential.user) {
         await updateProfile(userCredential.user, { displayName: trimmedName });
       }
@@ -1190,6 +1861,9 @@ const App = () => {
       if (userCredential.user && !userCredential.user.emailVerified) {
         await sendEmailVerification(userCredential.user);
       }
+      
+      // Reset rate limit on successful signup
+      authRateLimiterRef.current.reset(trimmedEmail);
 
       setSignupName('');
       setSignupEmail('');
@@ -1230,14 +1904,19 @@ const App = () => {
     setAuthMessage(null);
     setIsAuthBusy(true);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      
-      // Use redirect flow on native iOS, popup on web
       if (Capacitor.isNativePlatform()) {
-        await signInWithRedirect(auth, provider);
-        // User will be redirected away, auth state will update on return
+        // Use native Google Auth plugin on iOS
+        const googleUser = await GoogleAuth.signIn();
+        const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
+        const result = await signInWithCredential(auth, credential);
+        if (result.user && !result.user.emailVerified) {
+          await sendEmailVerification(result.user);
+        }
+        setAuthMessage({ type: 'success', text: 'Signed in with Google.' });
       } else {
+        // Use popup on web
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
         const result = await signInWithPopup(auth, provider);
         if (result.user && !result.user.emailVerified) {
           await sendEmailVerification(result.user);
@@ -1260,11 +1939,23 @@ const App = () => {
     setIsAuthBusy(true);
     try {
       await signOut(auth);
+      
+      // Clear all localStorage entries for security
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('journal_entries_') || key.startsWith('journal_user_'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
       if (previousEmail) setLoginEmail(previousEmail);
       setSignupName('');
       setSignupEmail('');
       setSignupPassword('');
       setEntries([]);
+      setShowEmailVerificationPrompt(false);
       setAuthMessage({ type: 'success', text: 'Signed out safely. See you soon!' });
     } catch (error) {
       setAuthMessage({ type: 'error', text: 'Failed to sign out. Please try again.' });
@@ -1274,10 +1965,32 @@ const App = () => {
     }
   };
 
+  const handleResendVerification = async () => {
+    if (auth.currentUser) {
+      try {
+        await sendEmailVerification(auth.currentUser);
+        alert('Verification email sent! Please check your inbox.');
+      } catch (error) {
+        console.error('Failed to send verification email:', error);
+        alert('Failed to send verification email. Please try again later.');
+      }
+    }
+  };
+
   if (view === 'loading') return null;
 
   return (
     <div className={`min-h-screen font-sans selection:bg-rose-200 transition-colors duration-1000 ${isDarkMode ? 'bg-slate-900' : 'bg-rose-50'}`}>
+      
+      {/* Email Verification Banner */}
+      {showEmailVerificationPrompt && user && !user.emailVerified && view !== 'auth' && (
+        <EmailVerificationBanner 
+          user={user}
+          isDarkMode={isDarkMode}
+          onResend={handleResendVerification}
+          onDismiss={() => setShowEmailVerificationPrompt(false)}
+        />
+      )}
       
       {/* Backgrounds */}
       {isDarkMode ? (
@@ -1328,10 +2041,12 @@ const App = () => {
             <WriteView 
               selectedDate={selectedDate}
               entries={entries}
-              setEntries={setEntries}
+              user={user}
               setView={setView}
               dailyPrompt={dailyPrompt}
               isDarkMode={isDarkMode}
+              selectedPalette={selectedPalette}
+              customPalette={customPalette}
             />
           )}
           {view === 'calendar' && (
@@ -1357,6 +2072,10 @@ const App = () => {
               isDarkMode={isDarkMode}
               setIsDarkMode={setIsDarkMode}
               handleLogout={handleLogout}
+              selectedPalette={selectedPalette}
+              setSelectedPalette={setSelectedPalette}
+              customPalette={customPalette}
+              setCustomPalette={setCustomPalette}
             />
           )}
           {view === 'details' && (
@@ -1370,33 +2089,55 @@ const App = () => {
         </main>
 
         {['dashboard', 'calendar', 'list', 'profile'].includes(view) && (
-          <nav className={`absolute bottom-6 left-6 right-6 h-18 rounded-3xl shadow-xl flex items-center justify-between px-6 border z-50 transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/80 border-white/10 text-indigo-300' : 'bg-white/60 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
+          <nav className={`fixed bottom-6 left-6 right-6 h-18 rounded-3xl shadow-xl flex items-center justify-between px-6 border z-50 transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/80 border-white/10 text-indigo-300' : 'bg-white/60 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
             
-            <button onClick={() => setView('dashboard')} className={`p-2 flex flex-col items-center space-y-1 ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <button onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
               <Home size={24} strokeWidth={view === 'dashboard' ? 2.5 : 2} />
             </button>
 
-            <button onClick={() => setView('list')} className={`p-2 flex flex-col items-center space-y-1 ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <button onClick={() => { Haptics.selectionChanged(); setView('list'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
               <List size={24} strokeWidth={view === 'list' ? 2.5 : 2} />
             </button>
 
             <button 
-              onClick={() => { setSelectedDate(formatDate(new Date())); setView('write'); }}
+              onClick={() => { Haptics.selectionChanged(); setSelectedDate(formatDate(new Date())); setView('write'); }}
               className={`w-14 h-14 rounded-full shadow-lg transform -translate-y-6 hover:scale-110 transition-all flex items-center justify-center ${isDarkMode ? 'bg-indigo-500 text-white shadow-indigo-500/50' : 'bg-gradient-to-tr from-rose-400 to-pink-500 text-white shadow-rose-300/50'}`}
             >
               <Plus size={28} strokeWidth={2.5} />
             </button>
 
-            <button onClick={() => setView('calendar')} className={`p-2 flex flex-col items-center space-y-1 ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <button onClick={() => { Haptics.selectionChanged(); setView('calendar'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
               <CalendarIcon size={24} strokeWidth={view === 'calendar' ? 2.5 : 2} />
             </button>
 
-            <button onClick={() => setView('profile')} className={`p-2 flex flex-col items-center space-y-1 ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
+            <button onClick={() => { Haptics.selectionChanged(); setView('profile'); }} className={`p-2 flex flex-col items-center space-y-1 ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
               <User size={24} strokeWidth={view === 'profile' ? 2.5 : 2} />
             </button>
           </nav>
         )}
       </div>
+      
+      {/* Palette Modal */}
+      <PaletteModal
+        show={showPaletteModal}
+        onClose={() => setShowPaletteModal(false)}
+        selectedPalette={selectedPalette}
+        setSelectedPalette={setSelectedPalette}
+        customPalette={customPalette}
+        setCustomPalette={setCustomPalette}
+        isDarkMode={isDarkMode}
+        MOOD_PALETTES={MOOD_PALETTES}
+        onEditCustom={() => setShowEmojiPickerModal(true)}
+      />
+      
+      {/* Emoji Picker Modal */}
+      <EmojiPickerModal
+        show={showEmojiPickerModal}
+        onClose={() => setShowEmojiPickerModal(false)}
+        customPalette={customPalette}
+        setCustomPalette={setCustomPalette}
+        isDarkMode={isDarkMode}
+      />
       
       <style>{`
         .scrollbar-hide::-webkit-scrollbar { display: none; }

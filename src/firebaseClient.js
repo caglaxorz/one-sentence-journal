@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 
 const firebaseConfig = {
@@ -21,6 +22,20 @@ console.log('Firebase config:', {
 });
 
 const app = initializeApp(firebaseConfig);
+
+// Initialize Firestore
+export const db = getFirestore(app);
+
+// Enable offline persistence for better UX
+if (Capacitor.isNativePlatform()) {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Persistence failed: Multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Persistence not available in this browser');
+    }
+  });
+}
 
 // Use memory-only persistence for iOS native to prevent WebView hangs
 export const auth = Capacitor.isNativePlatform()
