@@ -137,6 +137,7 @@ const getLastThirtyDaysEntries = (entries) => {
 
 const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
   const [sending, setSending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   
   const handleResend = async () => {
     setSending(true);
@@ -144,6 +145,33 @@ const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
       await onResend();
     } finally {
       setSending(false);
+    }
+  };
+  
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      // Reload the current user from Firebase
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        alert("Error: No user found. Please try logging in again.");
+        setRefreshing(false);
+        return;
+      }
+      
+      await currentUser.reload();
+      
+      // Check if email is now verified
+      if (currentUser.emailVerified) {
+        window.location.reload();
+      } else {
+        alert("It seems your email isn't verified yet. Please check your inbox for the verification link. If you're still having issues, reach out to hello@walruscreativeworks.com");
+        setRefreshing(false);
+      }
+    } catch (error) {
+      console.error('Error checking verification:', error);
+      alert("Error checking verification status. Please reach out to hello@walruscreativeworks.com");
+      setRefreshing(false);
     }
   };
   
@@ -163,13 +191,22 @@ const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
           <p className={`text-xs mt-1 ${isDarkMode ? 'text-indigo-200/80' : 'text-amber-700/80'}`}>
             We sent a verification link to {user?.email}. Check your inbox and click the link to verify your account.
           </p>
-          <button
-            onClick={handleResend}
-            disabled={sending}
-            className={`text-xs mt-2 underline ${isDarkMode ? 'text-indigo-200 hover:text-white' : 'text-amber-800 hover:text-amber-900'} ${sending ? 'opacity-50' : ''}`}
-          >
-            {sending ? 'Sending...' : 'Resend verification email'}
-          </button>
+          <div className="flex items-center gap-3 mt-2">
+            <button
+              onClick={handleResend}
+              disabled={sending}
+              className={`text-xs underline ${isDarkMode ? 'text-indigo-200 hover:text-white' : 'text-amber-800 hover:text-amber-900'} ${sending ? 'opacity-50' : ''}`}
+            >
+              {sending ? 'Sending...' : 'Resend verification email'}
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className={`text-xs underline ${isDarkMode ? 'text-indigo-200 hover:text-white' : 'text-amber-800 hover:text-amber-900'} ${refreshing ? 'opacity-50' : ''}`}
+            >
+              {refreshing ? 'Checking...' : "I've verified"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
