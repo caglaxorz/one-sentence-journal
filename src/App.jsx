@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { auth } from './firebaseClient';
 import { logger } from './utils/logger';
+import Analytics from './utils/analytics';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -200,6 +201,8 @@ const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
               onClick={handleResend}
               disabled={sending}
               className={`text-xs underline ${isDarkMode ? 'text-indigo-200 hover:text-white' : 'text-amber-800 hover:text-amber-900'} ${sending ? 'opacity-50' : ''}`}
+              aria-label="Resend verification email"
+              aria-disabled={sending}
             >
               {sending ? 'Sending...' : 'Resend verification email'}
             </button>
@@ -207,6 +210,8 @@ const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
               onClick={handleRefresh}
               disabled={refreshing}
               className={`text-xs underline ${isDarkMode ? 'text-indigo-200 hover:text-white' : 'text-amber-800 hover:text-amber-900'} ${refreshing ? 'opacity-50' : ''}`}
+              aria-label="Refresh verification status"
+              aria-disabled={refreshing}
             >
               {refreshing ? 'Checking...' : "I've verified"}
             </button>
@@ -256,16 +261,20 @@ const AuthView = ({
         onClick={handleGoogleLogin}
         disabled={isAuthBusy}
         className={`w-full max-w-xs py-3 rounded-2xl border flex items-center justify-center space-x-3 font-medium transition-colors ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'border-white/10 bg-white/5 text-indigo-100 hover:bg-white/10' : 'border-white/60 bg-white/80 text-slate-700 hover:bg-white'}`}
+        aria-label="Continue with Google"
+        aria-disabled={isAuthBusy}
       >
-        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-700 text-sm font-bold">G</span>
+        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-700 text-sm font-bold" aria-hidden="true">G</span>
         <span>Continue with Google</span>
       </button>
 
-      <div className={`w-full max-w-xs flex items-center justify-between rounded-2xl p-1 border ${isDarkMode ? 'border-white/10 bg-white/5' : 'border-white/50 bg-white/60'}`}>
+      <div className={`w-full max-w-xs flex items-center justify-between rounded-2xl p-1 border ${isDarkMode ? 'border-white/10 bg-white/5' : 'border-white/50 bg-white/60'}`} role="group" aria-label="Authentication mode">
         <button
           type="button"
           onClick={() => setAuthMode('login')}
           className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${isSignUp ? (isDarkMode ? 'text-indigo-300' : 'text-slate-500') : (isDarkMode ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-900/50' : 'bg-white text-rose-500 shadow-md')}`}
+          aria-label="Switch to sign in"
+          aria-pressed={!isSignUp}
         >
           Sign In
         </button>
@@ -273,6 +282,8 @@ const AuthView = ({
           type="button"
           onClick={() => setAuthMode('signup')}
           className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${isSignUp ? (isDarkMode ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-900/50' : 'bg-white text-rose-500 shadow-md') : (isDarkMode ? 'text-indigo-300' : 'text-slate-500')}`}
+          aria-label="Switch to sign up"
+          aria-pressed={isSignUp}
         >
           Sign Up
         </button>
@@ -285,9 +296,9 @@ const AuthView = ({
       )}
 
       {isSignUp ? (
-        <form onSubmit={handleSignUp} className="w-full max-w-xs space-y-4">
+        <form onSubmit={handleSignUp} className="w-full max-w-xs space-y-4" aria-label="Sign up form">
           <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
-            <User size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <User size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} aria-hidden="true" />
             <input
               type="text"
               placeholder="Full Name"
@@ -296,11 +307,13 @@ const AuthView = ({
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
               maxLength={24}
               required
+              aria-label="Full name"
+              autoComplete="name"
             />
           </div>
 
           <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
-            <Mail size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <Mail size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} aria-hidden="true" />
             <input
               type="email"
               placeholder="Email Address"
@@ -308,11 +321,13 @@ const AuthView = ({
               onChange={(e) => setSignupEmail(e.target.value)}
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
               required
+              aria-label="Email address"
+              autoComplete="email"
             />
           </div>
 
           <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
-            <Lock size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <Lock size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} aria-hidden="true" />
             <input
               type="password"
               placeholder="Create Password"
@@ -320,6 +335,8 @@ const AuthView = ({
               onChange={(e) => setSignupPassword(e.target.value)}
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
               required
+              aria-label="Create password"
+              autoComplete="new-password"
             />
           </div>
 
@@ -327,22 +344,24 @@ const AuthView = ({
             type="submit"
             disabled={isAuthBusy}
             className={`w-full py-4 rounded-2xl font-medium shadow-lg transition-all flex items-center justify-center space-x-2 ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-indigo-900/50' : 'bg-white/80 hover:bg-white text-rose-500 shadow-rose-200'}`}
+            aria-label="Create account and start journaling"
+            aria-disabled={isAuthBusy}
           >
             <span>Create Account</span>
-            <ArrowRight size={18} />
+            <ArrowRight size={18} aria-hidden="true" />
           </button>
 
           <p className={`text-xs ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
             Already have an account?{' '}
-            <button type="button" onClick={() => setAuthMode('login')} className={`font-semibold underline ${isDarkMode ? 'text-indigo-200' : 'text-rose-500'}`}>
+            <button type="button" onClick={() => setAuthMode('login')} className={`font-semibold underline ${isDarkMode ? 'text-indigo-200' : 'text-rose-500'}`} aria-label="Switch to sign in">
               Sign in instead
             </button>
           </p>
         </form>
       ) : (
-        <form onSubmit={handleLogin} className="w-full max-w-xs space-y-4">
+        <form onSubmit={handleLogin} className="w-full max-w-xs space-y-4" aria-label="Sign in form">
           <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
-            <Mail size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <Mail size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} aria-hidden="true" />
             <input
               type="email"
               placeholder="Email Address"
@@ -350,11 +369,13 @@ const AuthView = ({
               onChange={(e) => setLoginEmail(e.target.value)}
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
               required
+              aria-label="Email address"
+              autoComplete="email"
             />
           </div>
 
           <div className={`flex items-center space-x-3 p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white/60 border-white/40 text-slate-800'}`}>
-            <Lock size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} />
+            <Lock size={20} className={isDarkMode ? 'text-indigo-300' : 'text-slate-400'} aria-hidden="true" />
             <input
               type="password"
               placeholder="Password"
@@ -362,6 +383,8 @@ const AuthView = ({
               onChange={(e) => setLoginPassword(e.target.value)}
               className="bg-transparent w-full focus:outline-none placeholder:text-opacity-50 placeholder:text-current"
               required
+              aria-label="Password"
+              autoComplete="current-password"
             />
           </div>
 
@@ -369,9 +392,11 @@ const AuthView = ({
             type="submit"
             disabled={isAuthBusy}
             className={`w-full py-4 rounded-2xl font-medium shadow-lg transition-all flex items-center justify-center space-x-2 ${isAuthBusy ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-indigo-900/50' : 'bg-white/80 hover:bg-white text-rose-500 shadow-rose-200'}`}
+            aria-label="Sign in and begin journaling"
+            aria-disabled={isAuthBusy}
           >
             <span>Begin Journaling</span>
-            <ArrowRight size={18} />
+            <ArrowRight size={18} aria-hidden="true" />
           </button>
 
           <div className="text-center">
@@ -380,6 +405,8 @@ const AuthView = ({
               onClick={handleResetPassword}
               disabled={!loginEmail || isAuthBusy}
               className={`text-xs font-medium ${isAuthBusy || !loginEmail ? 'opacity-60 cursor-not-allowed' : ''} ${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'}`}
+              aria-label="Reset password"
+              aria-disabled={!loginEmail || isAuthBusy}
             >
               Forgot Password?
             </button>
@@ -436,6 +463,18 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
   const streak = calculateStreak();
   const commonMood = getMonthMood();
   
+  // Track streak milestones
+  useEffect(() => {
+    const milestones = [7, 14, 30, 50, 100, 365];
+    const trackedStreaks = JSON.parse(localStorage.getItem('tracked_streaks') || '[]');
+    
+    if (streak > 0 && milestones.includes(streak) && !trackedStreaks.includes(streak)) {
+      Analytics.trackStreakAchieved(streak);
+      trackedStreaks.push(streak);
+      localStorage.setItem('tracked_streaks', JSON.stringify(trackedStreaks));
+    }
+  }, [streak]);
+  
   const lastYearDate = new Date();
   lastYearDate.setFullYear(lastYearDate.getFullYear() - 1);
   const lastYearEntry = getEntryForDate(formatDate(lastYearDate));
@@ -478,11 +517,12 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
                 setView('write');
               }}
               className={`absolute top-4 right-4 p-2 rounded-full transition-colors ${isDarkMode ? 'bg-white/10 hover:bg-white/20 text-indigo-300' : 'bg-white/60 hover:bg-white/80 text-slate-600'}`}
+              aria-label="Edit today's entry"
             >
-              <Edit2 size={16} />
+              <Edit2 size={16} aria-hidden="true" />
             </button>
-            <div onClick={() => { setSelectedDate(todayEntry.date); setView('details'); }} className="cursor-pointer">
-              <span className="text-6xl filter drop-shadow-sm">{todayEntry.mood}</span>
+            <div onClick={() => { setSelectedDate(todayEntry.date); setView('details'); }} className="cursor-pointer" role="button" tabIndex={0} aria-label="View today's entry details" onKeyPress={(e) => e.key === 'Enter' && setView('details')}>
+              <span className="text-6xl filter drop-shadow-sm" role="img" aria-label={moodEmojis.find(m => m.emoji === todayEntry.mood)?.label || 'mood'}>{todayEntry.mood}</span>
               <p className={`mt-4 font-serif text-lg italic ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>"{todayEntry.text}"</p>
               <div className={`mt-2 text-xs uppercase tracking-widest font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Recorded Today</div>
             </div>
@@ -490,12 +530,13 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
         ) : (
           <div className="py-4">
             <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-4 ${isDarkMode ? 'bg-indigo-900/50' : 'bg-white/60 text-rose-400'}`}>
-              <span className="text-2xl">✍️</span>
+              <span className="text-2xl" role="img" aria-label="Write">✍️</span>
             </div>
             <p className={`font-medium ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>You haven't written yet.</p>
             <button 
               onClick={() => { setSelectedDate(formatDate(new Date())); setView('write'); }}
               className={`mt-6 px-8 py-3 rounded-full shadow-lg transition-transform hover:scale-105 ${isDarkMode ? 'bg-indigo-600 text-white shadow-indigo-900/50' : 'bg-white/80 text-rose-500 shadow-rose-300/50'}`}
+              aria-label="Write today's entry"
             >
               Write Entry
             </button>
@@ -517,9 +558,16 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
 
       {/* Last Year */}
       {lastYearEntry && (
-        <div className={`backdrop-blur-md rounded-3xl p-6 border cursor-pointer shadow-lg ${isDarkMode ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-white/40 border-white/40 shadow-rose-100'}`} onClick={() => { setSelectedDate(lastYearEntry.date); setView('details'); }}>
+        <div 
+          className={`backdrop-blur-md rounded-3xl p-6 border cursor-pointer shadow-lg ${isDarkMode ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-white/40 border-white/40 shadow-rose-100'}`} 
+          onClick={() => { setSelectedDate(lastYearEntry.date); setView('details'); }}
+          role="button"
+          tabIndex={0}
+          aria-label="View entry from one year ago"
+          onKeyPress={(e) => e.key === 'Enter' && setView('details')}
+        >
           <div className={`flex items-center space-x-2 mb-2 ${isDarkMode ? 'text-indigo-300' : 'text-indigo-500'}`}>
-            <Star size={16} fill="currentColor" />
+            <Star size={16} fill="currentColor" aria-hidden="true" />
             <span className="text-xs font-bold uppercase tracking-wider">One Year Ago</span>
           </div>
           <p className={`font-serif italic ${isDarkMode ? 'text-indigo-100' : 'text-indigo-900'}`}>"{lastYearEntry.text}"</p>
@@ -582,12 +630,22 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
           createdAt: new Date().toISOString(),
         };
         
+        // Check if this is an edit or new entry
+        const isEdit = entries.some(e => e.date === entryDate);
+        
         // Optimistic update - show entry immediately
         const tempEntry = { ...newEntry, id: entryDate, timestamp: Date.now() };
         setEntries(prev => [tempEntry, ...prev.filter(e => e.date !== entryDate)]);
         
         // Actual save to Firestore
         await saveEntry(user.uid, newEntry);
+        
+        // Track analytics
+        if (isEdit) {
+          Analytics.trackEntryEdited(mood, text.trim().length);
+        } else {
+          Analytics.trackEntryCreated(mood, text.trim().length);
+        }
         
         // Success feedback
         Haptics.notificationSuccess();
@@ -612,8 +670,12 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
     return (
       <div className="h-full flex flex-col animate-in slide-in-from-bottom-10 duration-500">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => setView('dashboard')} className={`p-2 -ml-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
-            <X />
+          <button 
+            onClick={() => setView('dashboard')} 
+            className={`p-3 -ml-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}
+            aria-label="Close and return to dashboard"
+          >
+            <X size={20} />
           </button>
           
           <div className="relative">
@@ -631,7 +693,7 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
 
         <div className="flex-1 overflow-y-auto space-y-6 pb-32">
           {/* Mood Selector */}
-          <div className="flex justify-between px-2">
+          <div className="flex justify-between px-2" role="group" aria-label="Select mood">
             {(() => {
               const currentMoods = selectedPalette === 'custom' && customPalette.length > 0 
                 ? customPalette 
@@ -639,10 +701,16 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
               return currentMoods.map((m) => (
                 <button
                   key={m.label}
-                  onClick={() => setMood(m.emoji)}
-                  className={`flex flex-col items-center space-y-2 transition-transform ${mood === m.emoji ? 'scale-110' : 'opacity-50 hover:opacity-80'}`}
+                  onClick={() => {
+                    setMood(m.emoji);
+                    Analytics.trackMoodSelected(m.emoji);
+                  }}
+                  className={`flex flex-col items-center space-y-2 p-2 transition-transform ${mood === m.emoji ? 'scale-110' : 'opacity-50 hover:opacity-80'}`}
+                  aria-label={`Select mood: ${m.label}`}
+                  aria-pressed={mood === m.emoji}
+                  title={m.label}
                 >
-                  <span className="text-4xl filter drop-shadow-sm">{m.emoji}</span>
+                  <span className="text-4xl filter drop-shadow-sm" role="img" aria-label={m.label}>{m.emoji}</span>
                 </button>
               ));
             })()}
@@ -676,8 +744,10 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
             <button 
               onClick={() => setMattered(!mattered)}
               className={`flex-1 p-3 rounded-2xl border flex items-center justify-center space-x-2 transition-colors ${mattered ? 'border-amber-300 bg-amber-50 text-amber-600' : (isDarkMode ? 'border-indigo-800 text-indigo-400' : 'border-white/50 bg-white/30 text-slate-500')}`}
+              aria-label={mattered ? "Mark entry as not important" : "Mark entry as important"}
+              aria-pressed={mattered}
             >
-              <Star size={20} fill={mattered ? "currentColor" : "none"} />
+              <Star size={20} fill={mattered ? "currentColor" : "none"} aria-hidden="true" />
               <span className="text-sm font-medium">This entry mattered</span>
             </button>
           </div>
@@ -687,7 +757,9 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
             <button 
             onClick={handleSave}
             disabled={!text || !mood || isSaving}
-            className={`w-full py-3 rounded-2xl font-medium transition-colors ${text && mood && !isSaving ? (isDarkMode ? 'bg-indigo-500 text-white' : 'bg-rose-400 text-white shadow-md') : (isDarkMode ? 'bg-indigo-900/50 text-indigo-500/50' : 'bg-white/80 text-slate-400 shadow-sm')}`}
+            className={`w-full py-4 rounded-2xl font-medium transition-colors ${text && mood && !isSaving ? (isDarkMode ? 'bg-indigo-500 text-white' : 'bg-rose-400 text-white shadow-md') : (isDarkMode ? 'bg-indigo-900/50 text-indigo-500/50' : 'bg-white/80 text-slate-400 shadow-sm')}`}
+            aria-label={isSaving ? "Saving journal entry" : "Save journal entry"}
+            aria-disabled={!text || !mood || isSaving}
           >
             {isSaving ? 'Saving...' : 'Save Entry'}
           </button>
@@ -732,12 +804,24 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
       <div className="space-y-6 pb-24">
          <div className="flex items-center justify-between">
            <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>History</h2>
-           <div className="flex space-x-4">
-             <button onClick={() => changeMonth(-1)} className={`p-1 rounded-full ${isDarkMode ? 'hover:bg-indigo-800 text-indigo-300' : 'hover:bg-white/50 text-slate-600'}`}><ChevronLeft size={20} /></button>
-             <span className={`font-medium w-24 text-center ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>
+           <div className="flex space-x-4" role="group" aria-label="Month navigation">
+             <button 
+               onClick={() => changeMonth(-1)} 
+               className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-indigo-800 text-indigo-300' : 'hover:bg-white/50 text-slate-600'}`}
+               aria-label="Previous month"
+             >
+               <ChevronLeft size={20} />
+             </button>
+             <span className={`font-medium w-24 text-center ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`} aria-live="polite">
                {currentMonth.toLocaleString('default', { month: 'short' })} {currentMonth.getFullYear()}
              </span>
-             <button onClick={() => changeMonth(1)} className={`p-1 rounded-full ${isDarkMode ? 'hover:bg-indigo-800 text-indigo-300' : 'hover:bg-white/50 text-slate-600'}`}><ChevronRight size={20} /></button>
+             <button 
+               onClick={() => changeMonth(1)} 
+               className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-indigo-800 text-indigo-300' : 'hover:bg-white/50 text-slate-600'}`}
+               aria-label="Next month"
+             >
+               <ChevronRight size={20} />
+             </button>
            </div>
          </div>
 
@@ -753,6 +837,9 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
              const isToday = dateStr === formatDate(new Date());
              const isFuture = new Date(dateStr) > new Date();
 
+             const monthName = currentMonth.toLocaleString('default', { month: 'long' });
+             const moodLabel = entry ? moodEmojis.find(m => m.emoji === entry.mood)?.label || 'Unknown mood' : '';
+             
              return (
                <button 
                  key={day}
@@ -772,9 +859,13 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
                      ? (isDarkMode ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-white/80 shadow-md text-slate-700 hover:scale-105') 
                      : (isDarkMode ? 'bg-indigo-900/20 text-indigo-200 hover:bg-indigo-900/40' : 'bg-white/30 text-slate-500 hover:bg-white/50')
                    } ${isToday ? (isDarkMode ? 'ring-2 ring-indigo-400' : 'ring-2 ring-rose-400') : ''}`}
+                 aria-label={entry 
+                   ? `${monthName} ${day}, entry with ${moodLabel} mood${entry.mattered ? ', marked as important' : ''}${isToday ? ', today' : ''}`
+                   : `${monthName} ${day}, no entry${isToday ? ', today' : ''}${isFuture ? ', future date' : ', write new entry'}`
+                 }
                >
-                 {entry ? <span className="text-xl">{entry.mood}</span> : day}
-                 {entry?.mattered && <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-amber-400 rounded-full" />}
+                 {entry ? <span className="text-xl" role="img" aria-label={moodLabel}>{entry.mood}</span> : day}
+                 {entry?.mattered && <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-amber-400 rounded-full" aria-hidden="true" />}
                </button>
              );
            })}
@@ -940,6 +1031,9 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
       try {
         const currentUser = auth.currentUser;
         
+        // Track account deletion before actually deleting
+        Analytics.trackAccountDeleted();
+        
         // Delete user account (this will also trigger Firestore rules to prevent access)
         await deleteUser(currentUser);
         
@@ -1008,11 +1102,15 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
              <div 
                onClick={() => fileInputRef.current?.click()}
                className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400 flex items-center justify-center text-2xl text-white font-serif overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+               role="button"
+               tabIndex={0}
+               aria-label="Change profile picture"
+               onKeyPress={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
              >
-                {user?.avatar ? <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" /> : (user?.name?.[0] || 'D')}
+                {user?.avatar ? <img src={user.avatar} alt={`${user?.name}'s profile picture`} className="w-full h-full object-cover" /> : (user?.name?.[0] || 'D')}
              </div>
-             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
-             <div className="absolute -bottom-1 -right-1 bg-white p-1 rounded-full shadow-md text-slate-500">
+             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} aria-label="Upload profile picture" />
+             <div className="absolute -bottom-1 -right-1 bg-white p-1 rounded-full shadow-md text-slate-500" aria-hidden="true">
                 <Camera size={12} />
              </div>
           </div>
@@ -1025,13 +1123,15 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
                         className={`w-full bg-transparent border-b ${isDarkMode ? 'border-indigo-400 text-white' : 'border-slate-400 text-slate-800'} focus:outline-none`}
+                        aria-label="Edit name"
+                        autoFocus
                     />
-                    <button onClick={handleSaveProfile} className="text-green-500"><Check size={18} /></button>
+                    <button onClick={handleSaveProfile} className="text-green-500" aria-label="Save profile name"><Check size={18} aria-hidden="true" /></button>
                 </div>
             ) : (
                 <div className="flex items-center space-x-2">
                     <h3 className={`font-bold ${isDarkMode ? 'text-indigo-100' : 'text-slate-800'}`}>{user?.name || 'Dreamer'}</h3>
-                    <button onClick={() => setIsEditing(true)} className={`${isDarkMode ? 'text-indigo-400' : 'text-slate-400'} hover:scale-110 transition-transform`}><Edit2 size={14} /></button>
+                    <button onClick={() => setIsEditing(true)} className={`${isDarkMode ? 'text-indigo-400' : 'text-slate-400'} hover:scale-110 transition-transform`} aria-label="Edit profile name"><Edit2 size={14} aria-hidden="true" /></button>
                 </div>
             )}
             <p className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>{user?.email}</p>
@@ -1043,12 +1143,14 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           <button 
             onClick={() => setIsDarkMode(!isDarkMode)}
             className={`w-full p-4 flex items-center justify-between transition-colors ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-white/50'}`}
+            aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+            aria-pressed={isDarkMode}
           >
             <div className="flex items-center space-x-3">
-              {isDarkMode ? <Moon size={20} className="text-purple-300" /> : <Sun size={20} className="text-amber-500" />}
+              {isDarkMode ? <Moon size={20} className="text-purple-300" aria-hidden="true" /> : <Sun size={20} className="text-amber-500" aria-hidden="true" />}
               <span className={`font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>Dream Mode</span>
             </div>
-            <div className={`w-10 h-6 rounded-full p-1 transition-colors ${isDarkMode ? 'bg-purple-500' : 'bg-rose-200'}`}>
+            <div className={`w-10 h-6 rounded-full p-1 transition-colors ${isDarkMode ? 'bg-purple-500' : 'bg-rose-200'}`} aria-hidden="true">
                <div className={`w-4 h-4 bg-white rounded-full transition-transform ${isDarkMode ? 'translate-x-4' : ''}`} />
             </div>
           </button>
@@ -1059,8 +1161,10 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           <button
             onClick={() => setShowChangePassword(!showChangePassword)}
             className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
+            aria-label="Change password"
+            aria-expanded={showChangePassword}
           >
-            <Lock size={20} />
+            <Lock size={20} aria-hidden="true" />
             <span className="font-medium">Change Password</span>
           </button>
 
@@ -1078,8 +1182,9 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
               }
             }}
             className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-indigo-200' : 'hover:bg-white/50 text-slate-600'}`}
+            aria-label="Contact developer via email"
           >
-            <Mail size={20} />
+            <Mail size={20} aria-hidden="true" />
             <span className="font-medium">Contact Developer</span>
           </button>
 
@@ -1089,8 +1194,10 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           <button
             onClick={() => setShowDeleteAccount(!showDeleteAccount)}
             className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-red-300' : 'hover:bg-white/50 text-red-600'}`}
+            aria-label="Delete account permanently"
+            aria-expanded={showDeleteAccount}
           >
-            <X size={20} />
+            <X size={20} aria-hidden="true" />
             <span className="font-medium">Delete Account</span>
           </button>
 
@@ -1100,15 +1207,17 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           <button
             onClick={() => setShowClearAccount(!showClearAccount)}
             className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-red-300' : 'hover:bg-white/50 text-red-600'}`}
+            aria-label="Clear all account data but keep account"
+            aria-expanded={showClearAccount}
           >
-            <X size={20} />
+            <X size={20} aria-hidden="true" />
             <span className="font-medium">Clear Account Data</span>
           </button>
 
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
-          <button onClick={handleLogout} className="w-full p-4 flex items-center space-x-3 text-red-400 hover:text-red-500 transition-colors hover:bg-red-50/50">
-            <LogOut size={20} />
+          <button onClick={handleLogout} className="w-full p-4 flex items-center space-x-3 text-red-400 hover:text-red-500 transition-colors hover:bg-red-50/50" aria-label="Log out of your account">
+            <LogOut size={20} aria-hidden="true" />
             <span className="font-medium">Log Out</span>
           </button>
         </div>
@@ -1392,10 +1501,14 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
         <div className="flex justify-between items-center">
           <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>Entries</h2>
           <button 
-            onClick={generatePDF}
+            onClick={() => {
+              generatePDF();
+              Analytics.trackPDFExported(sortedEntries.length);
+            }}
             className={`flex items-center space-x-2 px-3 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-transform hover:scale-105 ${isDarkMode ? 'bg-indigo-600 text-white' : 'bg-white text-rose-500 shadow-sm'}`}
+            aria-label={`Export ${sortedEntries.length} entries as PDF`}
           >
-            <Download size={14} />
+            <Download size={14} aria-hidden="true" />
             <span>PDF</span>
           </button>
         </div>
@@ -1403,10 +1516,12 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
         {/* Compact Filters Section */}
         <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
           {/* Quick Filter Chips */}
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label="Entry filters">
             <button 
               onClick={() => setShowMatteredOnly(!showMatteredOnly)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${showMatteredOnly ? 'bg-rose-400 text-white shadow-md' : (isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-600')}`}
+              aria-label={`Filter by important entries only ${showMatteredOnly ? '- active' : ''}`}
+              aria-pressed={showMatteredOnly}
             >
               ⭐ Core {showMatteredOnly && '✓'}
             </button>
@@ -1416,8 +1531,11 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
                 key={moodObj.emoji}
                 onClick={() => setSelectedMoodFilter(selectedMoodFilter === moodObj.emoji ? null : moodObj.emoji)}
                 className={`px-2.5 py-1.5 rounded-full text-lg transition-all ${selectedMoodFilter === moodObj.emoji ? (isDarkMode ? 'bg-indigo-500/30 ring-2 ring-indigo-400' : 'bg-rose-100 ring-2 ring-rose-300') : (isDarkMode ? 'bg-white/10 hover:bg-white/15' : 'bg-white/60 hover:bg-white/80')}`}
+                aria-label={`Filter by ${moodObj.label} mood`}
+                aria-pressed={selectedMoodFilter === moodObj.emoji}
+                title={moodObj.label}
               >
-                {moodObj.emoji}
+                <span role="img" aria-label={moodObj.label}>{moodObj.emoji}</span>
               </button>
             ))}
             
@@ -1425,6 +1543,7 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
               <button
                 onClick={() => setSelectedMoodFilter(null)}
                 className={`px-2.5 py-1.5 rounded-full text-xs font-medium ${isDarkMode ? 'bg-white/10 text-indigo-300' : 'bg-white/60 text-slate-600'}`}
+                aria-label="Clear mood filter"
               >
                 Clear mood
               </button>
@@ -1432,36 +1551,43 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
           </div>
           
           {/* Date Range */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" role="group" aria-label="Date range filter">
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className={`flex-1 px-3 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
+              aria-label="Start date"
             />
-            <span className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>→</span>
+            <span className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`} aria-hidden="true">→</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className={`flex-1 px-3 py-1.5 text-xs rounded-lg border ${isDarkMode ? 'bg-white/5 border-white/10 text-indigo-200' : 'bg-white/80 border-white/60 text-slate-700'}`}
+              aria-label="End date"
             />
             {(dateFrom || dateTo) && (
               <button
                 onClick={() => { setDateFrom(''); setDateTo(''); }}
                 className={`p-1.5 rounded-lg ${isDarkMode ? 'bg-white/10 text-indigo-300 hover:bg-white/20' : 'bg-white/80 text-slate-500 hover:bg-white'}`}
+                aria-label="Clear date range filter"
               >
-                <X size={14} />
+                <X size={14} aria-hidden="true" />
               </button>
             )}
           </div>
         </div>
 
         <div className="space-y-4">
-          {paginatedEntries.map(entry => (
+          {paginatedEntries.map(entry => {
+            const moodLabel = MOOD_PALETTES.emotions.find(m => m.emoji === entry.mood)?.label || 'Unknown mood';
+            return (
             <div 
               key={entry.date} 
               className={`relative p-4 rounded-2xl border backdrop-blur-md cursor-pointer transition-transform hover:scale-[1.02] active:scale-95 shadow-sm ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white/40 border-white/40 hover:bg-white/60 shadow-rose-100'}`}
+              role="article"
+              aria-label={`Entry from ${getDayName(entry.date)}, ${moodLabel}${entry.mattered ? ', important' : ''}`}
             >
               <button
                 onClick={(e) => {
@@ -1470,24 +1596,25 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
                   setView('write');
                 }}
                 className={`absolute top-3 right-3 p-1.5 rounded-full transition-colors ${isDarkMode ? 'bg-white/10 hover:bg-white/20 text-indigo-300' : 'bg-white/60 hover:bg-white/80 text-slate-600'}`}
+                aria-label={`Edit entry from ${getDayName(entry.date)}`}
               >
-                <Edit2 size={14} />
+                <Edit2 size={14} aria-hidden="true" />
               </button>
-              <div onClick={() => { setSelectedDate(entry.date); setView('details'); }}>
+              <div onClick={() => { setSelectedDate(entry.date); setView('details'); }} role="button" tabIndex={0} onKeyPress={(e) => e.key === 'Enter' && setView('details')}>
                 <div className="flex justify-between items-start mb-2 pr-8">
                   <div className="flex items-center space-x-3">
-                    <span className="text-2xl">{entry.mood}</span>
+                    <span className="text-2xl" role="img" aria-label={moodLabel}>{entry.mood}</span>
                     <span className={`text-sm font-bold ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>{getDayName(entry.date)}</span>
                   </div>
-                  {entry.mattered && <Star size={14} className="text-amber-400" fill="currentColor" />}
+                  {entry.mattered && <Star size={14} className="text-amber-400" fill="currentColor" aria-label="Important entry" />}
                 </div>
                 <p className={`text-sm font-serif italic truncate ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>{entry.text}</p>
               </div>
             </div>
-          ))}
+          )})}
           {sortedEntries.length === 0 && (
             <div className={`text-center py-10 ${isDarkMode ? 'text-indigo-400' : 'text-slate-400'}`}>
-              <Clock size={32} className="mx-auto mb-2 opacity-50" />
+              <Clock size={32} className="mx-auto mb-2 opacity-50" aria-hidden="true" />
               <p>No memories found.</p>
             </div>
           )}
@@ -1495,18 +1622,20 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className={`mt-6 flex items-center justify-between p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`}>
+          <div className={`mt-6 flex items-center justify-between p-4 rounded-2xl border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/40'}`} role="navigation" aria-label="Pagination">
             <button
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
               className={`px-4 py-2 rounded-full flex items-center space-x-2 transition-all ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : (isDarkMode ? 'bg-indigo-500/30 hover:bg-indigo-500/40 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700')}`}
+              aria-label="Go to previous page"
+              aria-disabled={currentPage === 1}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={16} aria-hidden="true" />
               <span className="text-sm font-medium">Previous</span>
             </button>
             
             <div className="flex items-center space-x-2">
-              <span className={`text-sm ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>
+              <span className={`text-sm ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`} aria-current="page">
                 Page {currentPage} of {totalPages}
               </span>
               <span className={`text-xs ${isDarkMode ? 'text-indigo-400' : 'text-slate-400'}`}>
@@ -1518,9 +1647,11 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
               className={`px-4 py-2 rounded-full flex items-center space-x-2 transition-all ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : (isDarkMode ? 'bg-indigo-500/30 hover:bg-indigo-500/40 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700')}`}
+              aria-label="Go to next page"
+              aria-disabled={currentPage === totalPages}
             >
               <span className="text-sm font-medium">Next</span>
-              <ChevronRight size={16} />
+              <ChevronRight size={16} aria-hidden="true" />
             </button>
           </div>
         )}
@@ -1533,33 +1664,36 @@ const EntryDetailView = ({ entries, selectedDate, setView, isDarkMode }) => {
     const entry = getEntryForDate(selectedDate);
     if (!entry) return null;
 
+    const moodLabel = MOOD_PALETTES.emotions.find(m => m.emoji === entry.mood)?.label || 'Unknown mood';
+
     return (
       <div className="h-full flex flex-col animate-in zoom-in-95 duration-300">
         <div className="flex items-center justify-between mb-8">
-          <button onClick={() => setView('dashboard')} className={`p-2 -ml-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}>
-            <ChevronLeft />
+          <button onClick={() => setView('dashboard')} className={`p-2 -ml-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`} aria-label="Back to dashboard">
+            <ChevronLeft aria-hidden="true" />
           </button>
           <span className={`text-xs font-bold tracking-widest uppercase ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>{entry.date}</span>
           <div className="flex items-center space-x-2">
             <button 
               onClick={() => { setView('write'); }}
               className={`p-2 ${isDarkMode ? 'text-indigo-300 hover:bg-white/10' : 'text-slate-600 hover:bg-white/60'} rounded-full transition-colors`}
+              aria-label="Edit this entry"
             >
-              <Edit2 size={18} />
+              <Edit2 size={18} aria-hidden="true" />
             </button>
-            <button onClick={() => alert("Sharing...")} className={`p-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`}>
-              <Share size={18} />
+            <button onClick={() => alert("Sharing...")} className={`p-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`} aria-label="Share this entry">
+              <Share size={18} aria-hidden="true" />
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-8 pb-20">
            <div className="text-center space-y-2">
-             <span className="text-6xl animate-bounce-slow inline-block">{entry.mood}</span>
+             <span className="text-6xl animate-bounce-slow inline-block" role="img" aria-label={moodLabel}>{entry.mood}</span>
              <div className="flex justify-center">
                {entry.mattered && (
                  <span className="px-3 py-1 bg-amber-100 text-amber-600 rounded-full text-xs font-bold uppercase tracking-wider flex items-center space-x-1">
-                   <Star size={10} fill="currentColor" /> <span>Core Memory</span>
+                   <Star size={10} fill="currentColor" aria-hidden="true" /> <span>Core Memory</span>
                  </span>
                )}
              </div>
@@ -1977,6 +2111,10 @@ const App = () => {
           setLoginPassword('');
           setAuthMode('login');
           setAuthMessage(null);
+          
+          // Track app open and set user ID for analytics
+          Analytics.trackAppOpen();
+          Analytics.setUserId(firebaseUser.uid);
         }
         
         // Check email verification
@@ -2133,6 +2271,9 @@ const App = () => {
       // Reset rate limit on successful login
       authRateLimiterRef.current.reset(trimmedEmail);
       setAuthMessage({ type: 'success', text: 'Signed in successfully.' });
+      
+      // Track login
+      Analytics.trackLogin('email');
     } catch (error) {
       setAuthMessage({ type: 'error', text: describeAuthError(error) });
       logger.error('Sign-in failed:', error);
@@ -2195,6 +2336,9 @@ const App = () => {
       
       // Reset rate limit on successful signup
       authRateLimiterRef.current.reset(trimmedEmail);
+
+      // Track sign up
+      Analytics.trackSignUp('email');
 
       setSignupName('');
       setSignupEmail('');
@@ -2265,6 +2409,9 @@ const App = () => {
           await sendEmailVerification(result.user);
         }
         setAuthMessage({ type: 'success', text: 'Signed in with Google.' });
+        
+        // Track Google login
+        Analytics.trackLogin('google');
       } else {
         // Use popup on web
         const provider = new GoogleAuthProvider();
@@ -2274,6 +2421,9 @@ const App = () => {
           await sendEmailVerification(result.user);
         }
         setAuthMessage({ type: 'success', text: 'Signed in with Google.' });
+        
+        // Track Google login
+        Analytics.trackLogin('google');
       }
     } catch (error) {
       if (error?.code !== 'auth/popup-closed-by-user') {
@@ -2436,29 +2586,54 @@ const App = () => {
 
       {/* FROZEN BOTTOM MENU - Always visible, like Excel frozen row */}
       {['dashboard', 'calendar', 'list', 'profile'].includes(view) && (
-        <nav className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md h-20 shadow-2xl flex items-center justify-center justify-between px-8 border-t z-[9999] transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/98 border-white/10 text-indigo-300' : 'bg-white/98 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}>
+        <nav 
+          role="navigation" 
+          aria-label="Main navigation"
+          className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md h-20 shadow-2xl flex items-center justify-center justify-between px-8 border-t z-[9999] transition-colors duration-500 ${isDarkMode ? 'bg-slate-800/98 border-white/10 text-indigo-300' : 'bg-white/98 border-white/40 text-slate-500 shadow-rose-200'} backdrop-blur-xl`}
+        >
           
-          <button onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} className={`p-2 flex items-center justify-center ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-            <Home size={24} strokeWidth={view === 'dashboard' ? 2.5 : 2} />
+          <button 
+            onClick={() => { Haptics.selectionChanged(); setView('dashboard'); }} 
+            className={`p-3 flex items-center justify-center ${view === 'dashboard' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}
+            aria-label="Home dashboard"
+            aria-current={view === 'dashboard' ? 'page' : undefined}
+          >
+            <Home size={22} strokeWidth={view === 'dashboard' ? 2.5 : 2} />
           </button>
 
-          <button onClick={() => { Haptics.selectionChanged(); setView('list'); }} className={`p-2 flex items-center justify-center ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-            <List size={24} strokeWidth={view === 'list' ? 2.5 : 2} />
+          <button 
+            onClick={() => { Haptics.selectionChanged(); setView('list'); }} 
+            className={`p-3 flex items-center justify-center ${view === 'list' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}
+            aria-label="List view"
+            aria-current={view === 'list' ? 'page' : undefined}
+          >
+            <List size={22} strokeWidth={view === 'list' ? 2.5 : 2} />
           </button>
 
           <button 
             onClick={() => { Haptics.selectionChanged(); setSelectedDate(formatDate(new Date())); setView('write'); }}
             className={`w-14 h-14 rounded-full shadow-lg transform -translate-y-8 hover:scale-110 transition-all flex items-center justify-center ${isDarkMode ? 'bg-indigo-500 text-white shadow-indigo-500/50' : 'bg-gradient-to-tr from-rose-400 to-pink-500 text-white shadow-rose-300/50'}`}
+            aria-label="Write new journal entry"
           >
             <Plus size={28} strokeWidth={2.5} />
           </button>
 
-          <button onClick={() => { Haptics.selectionChanged(); setView('calendar'); }} className={`p-2 flex items-center justify-center ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-            <CalendarIcon size={24} strokeWidth={view === 'calendar' ? 2.5 : 2} />
+          <button 
+            onClick={() => { Haptics.selectionChanged(); setView('calendar'); }} 
+            className={`p-3 flex items-center justify-center ${view === 'calendar' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}
+            aria-label="Calendar view"
+            aria-current={view === 'calendar' ? 'page' : undefined}
+          >
+            <CalendarIcon size={22} strokeWidth={view === 'calendar' ? 2.5 : 2} />
           </button>
 
-          <button onClick={() => { Haptics.selectionChanged(); setView('profile'); }} className={`p-2 flex items-center justify-center ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}>
-            <User size={24} strokeWidth={view === 'profile' ? 2.5 : 2} />
+          <button 
+            onClick={() => { Haptics.selectionChanged(); setView('profile'); }} 
+            className={`p-3 flex items-center justify-center ${view === 'profile' ? (isDarkMode ? 'text-white' : 'text-rose-600') : ''}`}
+            aria-label="Profile and settings"
+            aria-current={view === 'profile' ? 'page' : undefined}
+          >
+            <User size={22} strokeWidth={view === 'profile' ? 2.5 : 2} />
           </button>
         </nav>
       )}
