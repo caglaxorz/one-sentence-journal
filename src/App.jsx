@@ -963,12 +963,11 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
       try {
         const userId = auth.currentUser.uid;
         
-        // Delete all entries from Firestore
-        const entriesSnapshot = await getDocs(collection(db, 'entries'));
-        const deletePromises = entriesSnapshot.docs
-          .filter(doc => doc.data().userId === userId)
-          .map(doc => deleteDoc(doc.ref));
+        // ✅ Query only the user's own entries using correct Firestore path
+        const entriesRef = collection(db, 'users', userId, 'entries');
+        const entriesSnapshot = await getDocs(entriesRef);
         
+        const deletePromises = entriesSnapshot.docs.map(doc => deleteDoc(doc.ref));
         await Promise.all(deletePromises);
         
         // Clear local storage
