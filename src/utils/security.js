@@ -1,20 +1,37 @@
 // Input sanitization and validation utilities
+import DOMPurify from 'dompurify';
 
 /**
  * Sanitizes text input to prevent XSS attacks
+ * Uses DOMPurify for industry-standard protection against:
+ * - HTML tag injection
+ * - Attribute injection (onerror, onclick, etc.)
+ * - HTML entity bypasses
+ * - Unicode bypasses
+ * - JavaScript protocol injection
+ * 
  * @param {string} text - The text to sanitize
  * @returns {string} - Sanitized text
  */
 export const sanitizeText = (text) => {
   if (!text) return '';
   
-  // Remove any HTML tags
-  const withoutTags = text.replace(/<[^>]*>/g, '');
+  // DOMPurify removes ALL HTML and dangerous patterns
+  // ALLOWED_TAGS: [] means strip ALL HTML tags
+  // ALLOWED_ATTR: [] means strip ALL attributes
+  // KEEP_CONTENT: true means keep the text content
+  const clean = DOMPurify.sanitize(text, {
+    ALLOWED_TAGS: [],  // Strip ALL tags
+    ALLOWED_ATTR: [],  // Strip ALL attributes
+    KEEP_CONTENT: true,  // Keep text content
+  });
   
-  // Escape special characters
-  const div = document.createElement('div');
-  div.textContent = withoutTags;
-  return div.innerHTML;
+  // Additional length validation
+  if (clean.length > 500) {
+    throw new Error('Entry text is too long (max 500 characters)');
+  }
+  
+  return clean.trim();
 };
 
 /**
