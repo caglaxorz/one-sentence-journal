@@ -454,6 +454,11 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
   };
 
   const getMonthMood = () => {
+    // Get entries from the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentEntries = entries.filter(e => new Date(e.date) >= thirtyDaysAgo);
+    
     if (recentEntries.length === 0) return null;
     const counts = {};
     recentEntries.forEach(e => counts[e.mood] = (counts[e.mood] || 0) + 1);
@@ -522,7 +527,7 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
               <Edit2 size={16} aria-hidden="true" />
             </button>
             <div onClick={() => { setSelectedDate(todayEntry.date); setView('details'); }} className="cursor-pointer" role="button" tabIndex={0} aria-label="View today's entry details" onKeyPress={(e) => e.key === 'Enter' && setView('details')}>
-              <span className="text-6xl filter drop-shadow-sm" role="img" aria-label={moodEmojis.find(m => m.emoji === todayEntry.mood)?.label || 'mood'}>{todayEntry.mood}</span>
+              <span className="text-6xl filter drop-shadow-sm" role="img" aria-label={MOOD_PALETTES.emotions.find(m => m.emoji === todayEntry.mood)?.label || 'mood'}>{todayEntry.mood}</span>
               <p className={`mt-4 font-serif text-lg italic ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>"{todayEntry.text}"</p>
               <div className={`mt-2 text-xs uppercase tracking-widest font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Recorded Today</div>
             </div>
@@ -794,6 +799,9 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
     };
 
      // 1. Last 30 Days
+     const thirtyDaysAgo = new Date();
+     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+     const recentEntries = entries.filter(e => new Date(e.createdAt) > thirtyDaysAgo);
      const lastMonthVibe = getDominantMood(recentEntries);
     // ---------------------------
 
@@ -838,7 +846,7 @@ const CalendarView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
              const isFuture = new Date(dateStr) > new Date();
 
              const monthName = currentMonth.toLocaleString('default', { month: 'long' });
-             const moodLabel = entry ? moodEmojis.find(m => m.emoji === entry.mood)?.label || 'Unknown mood' : '';
+             const moodLabel = entry ? MOOD_PALETTES.emotions.find(m => m.emoji === entry.mood)?.label || 'Unknown mood' : '';
              
              return (
                <button 
