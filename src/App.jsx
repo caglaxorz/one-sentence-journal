@@ -48,6 +48,8 @@ import { Haptics } from '@capacitor/haptics';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { subscribeToEntries, saveEntry, deleteEntry, migrateLocalEntries } from './services/database';
 import { sanitizeText, validateName, validatePassword, validateEmail, RateLimiter } from './utils/security';
+import { db } from './firebaseClient';
+import { collection, getDocs, deleteDoc } from 'firebase/firestore';
 
 // --- Constants & Config ---
 
@@ -817,7 +819,9 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+    const [showClearAccount, setShowClearAccount] = useState(false);
     const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
+    const [clearConfirmEmail, setClearConfirmEmail] = useState('');
     const fileInputRef = useRef(null);
 
     const handleSaveProfile = () => {
@@ -942,6 +946,54 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
       }
     };
 
+    const handleClearAccount = async () => {
+      if (clearConfirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+        alert('Email does not match. Please enter your email correctly to confirm.');
+        return;
+      }
+
+      const finalConfirm = window.confirm(
+        '⚠️ WARNING ⚠️\n\nThis will permanently delete:\n• All your journal entries\n• All your data\n\nYour account will remain active.\n\nTHIS CANNOT BE UNDONE.\n\nAre you absolutely sure?'
+      );
+
+      if (!finalConfirm) {
+        return;
+      }
+
+      try {
+        const userId = auth.currentUser.uid;
+        
+        // Delete all entries from Firestore
+        const entriesSnapshot = await getDocs(collection(db, 'entries'));
+        const deletePromises = entriesSnapshot.docs
+          .filter(doc => doc.data().userId === userId)
+          .map(doc => deleteDoc(doc.ref));
+        
+        await Promise.all(deletePromises);
+        
+        // Clear local storage
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('journal_entries_')) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        
+        alert('All your journal data has been cleared. Your account remains active.');
+        setShowClearAccount(false);
+        setClearConfirmEmail('');
+        
+        // Refresh the view
+        setView('dashboard');
+        
+      } catch (error) {
+        console.error('Failed to clear account data:', error);
+        alert('Failed to clear account data. Please contact support at hello@walruscreativeworks.com');
+      }
+    };
+
     return (
       <div className="space-y-6 pb-24">
         <h2 className={`text-2xl font-serif ${isDarkMode ? 'text-indigo-50' : 'text-slate-800'}`}>Settings</h2>
@@ -1006,6 +1058,28 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           >
             <Lock size={20} />
             <span className="font-medium">Change Password</span>
+          </button>
+
+          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
+
+          {/* Delete Account */}
+          <button
+            onClick={() => setShowDeleteAccount(!showDeleteAccount)}
+            className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-red-300' : 'hover:bg-white/50 text-red-600'}`}
+          >
+            <X size={20} />
+            <span className="font-medium">Delete Account</span>
+          </button>
+
+          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
+
+          {/* Clear Account */}
+          <button
+            onClick={() => setShowClearAccount(!showClearAccount)}
+            className={`w-full p-4 flex items-center space-x-3 transition-colors cursor-pointer ${isDarkMode ? 'hover:bg-white/5 text-red-300' : 'hover:bg-white/50 text-red-600'}`}
+          >
+            <X size={20} />
+            <span className="font-medium">Clear Account Data</span>
           </button>
 
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
@@ -1100,36 +1174,21 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
           </div>
         )}
 
-        {/* Account Management */}
-        <div className={`p-6 rounded-3xl border shadow-lg ${isDarkMode ? 'bg-red-900/20 border-red-700/50' : 'bg-red-50/40 shadow-red-100 border-red-200'}`}>
-          <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>Account Management</h3>
-          <p className={`text-xs mb-4 ${isDarkMode ? 'text-red-200/70' : 'text-red-600/70'}`}>
-            Delete your account or all your journal data. These actions cannot be undone.
-          </p>
-          
-          {!showDeleteAccount ? (
-            <button
-              onClick={() => setShowDeleteAccount(true)}
-              className={`w-full py-2 rounded-xl font-medium border-2 transition-colors ${isDarkMode ? 'border-red-500 text-red-400 hover:bg-red-500/20' : 'border-red-500 text-red-600 hover:bg-red-100'}`}
-            >
-              Delete All Data
-            </button>
-          ) : (
+        {/* Delete Account Modal */}
+        {showDeleteAccount && (
+          <div className={`p-6 rounded-3xl border shadow-lg ${isDarkMode ? 'bg-red-900/30 border-red-700' : 'bg-red-50/40 shadow-red-100 border-red-200'}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>Delete Account</h3>
+              <button onClick={() => { setShowDeleteAccount(false); setDeleteConfirmEmail(''); }} className={isDarkMode ? 'text-red-300' : 'text-red-600'}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <p className={`text-xs mb-4 ${isDarkMode ? 'text-red-200/70' : 'text-red-600/70'}`}>
+              This will permanently delete your account and all journal entries. This cannot be undone.
+            </p>
+            
             <div className="space-y-3">
-              <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-red-900/30' : 'bg-red-100/60'}`}>
-                <p className={`text-xs font-semibold ${isDarkMode ? 'text-red-200' : 'text-red-800'}`}>
-                  ⚠️ This will permanently delete:
-                </p>
-                <ul className={`text-xs mt-2 space-y-1 ${isDarkMode ? 'text-red-300/80' : 'text-red-700/80'}`}>
-                  <li>• All your journal entries</li>
-                  <li>• Your account</li>
-                  <li>• All associated data</li>
-                </ul>
-                <p className={`text-xs font-bold mt-2 ${isDarkMode ? 'text-red-200' : 'text-red-800'}`}>
-                  THIS CANNOT BE UNDONE!
-                </p>
-              </div>
-              
               <div>
                 <label className={`text-xs font-medium ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
                   Type your email to confirm: <span className="font-bold">{user?.email}</span>
@@ -1146,9 +1205,10 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
               <div className="flex space-x-2">
                 <button
                   onClick={handleDeleteAllData}
-                  className="flex-1 py-2 rounded-xl font-medium bg-red-600 hover:bg-red-700 text-white transition-colors"
+                  disabled={deleteConfirmEmail.trim().toLowerCase() !== user?.email.toLowerCase()}
+                  className={`flex-1 py-2 rounded-xl font-medium transition-colors ${deleteConfirmEmail.trim().toLowerCase() === user?.email.toLowerCase() ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-red-900/20 text-red-300/50 cursor-not-allowed'}`}
                 >
-                  Yes, Delete Everything
+                  Delete Account
                 </button>
                 <button
                   onClick={() => {
@@ -1161,8 +1221,58 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
                 </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Clear Account Modal */}
+        {showClearAccount && (
+          <div className={`p-6 rounded-3xl border shadow-lg ${isDarkMode ? 'bg-red-900/30 border-red-700' : 'bg-red-50/40 shadow-red-100 border-red-200'}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>Clear Account Data</h3>
+              <button onClick={() => { setShowClearAccount(false); setClearConfirmEmail(''); }} className={isDarkMode ? 'text-red-300' : 'text-red-600'}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <p className={`text-xs mb-4 ${isDarkMode ? 'text-red-200/70' : 'text-red-600/70'}`}>
+              This will permanently delete all your journal entries. Your account will remain active. This cannot be undone.
+            </p>
+            
+            <div className="space-y-3">
+              <div>
+                <label className={`text-xs font-medium ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
+                  Type your email to confirm: <span className="font-bold">{user?.email}</span>
+                </label>
+                <input
+                  type="email"
+                  value={clearConfirmEmail}
+                  onChange={(e) => setClearConfirmEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className={`w-full mt-1 px-4 py-2 rounded-xl border ${isDarkMode ? 'bg-white/5 border-red-700 text-white' : 'bg-white border-red-300 text-slate-800'} focus:outline-none focus:ring-2 focus:ring-red-500`}
+                />
+              </div>
+              
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleClearAccount}
+                  disabled={clearConfirmEmail.trim().toLowerCase() !== user?.email.toLowerCase()}
+                  className={`flex-1 py-2 rounded-xl font-medium transition-colors ${clearConfirmEmail.trim().toLowerCase() === user?.email.toLowerCase() ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-red-900/20 text-red-300/50 cursor-not-allowed'}`}
+                >
+                  Clear Data
+                </button>
+                <button
+                  onClick={() => {
+                    setShowClearAccount(false);
+                    setClearConfirmEmail('');
+                  }}
+                  className={`flex-1 py-2 rounded-xl font-medium border transition-colors ${isDarkMode ? 'border-white/20 text-indigo-300 hover:bg-white/5' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="text-center text-xs mt-4">
           <a
