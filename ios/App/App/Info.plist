@@ -64,5 +64,7 @@
 	<string>https://walruscreativeworks.com/one-sentence-privacy-policy/</string>
 	<key>NSTermsOfServiceURL</key>
 	<string>https://walruscreativeworks.com/one-sentence-terms/</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>We'll send you a gentle daily reminder to reflect on your day. You can customize or disable these anytime in Settings.</string>
 </dict>
 </plist>

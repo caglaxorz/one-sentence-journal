@@ -23,11 +23,19 @@ import {
   ArrowRight,
   Camera,
   Edit2,
-  Check
+  Check,
+  Bell
 } from 'lucide-react';
 import { auth } from './firebaseClient';
 import { logger } from './utils/logger';
 import Analytics from './utils/analytics';
+import { 
+  requestNotificationPermission, 
+  scheduleDailyReminder, 
+  cancelDailyReminder, 
+  getReminderSettings,
+  getOptimalReminderTime
+} from './utils/notifications';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -450,8 +458,6 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
 
   const calculateStreak = () => {
     let streak = 0;
-    let freezesUsed = 0;
-    const maxFreezes = 1; // Allow 1 "freeze" per month
     const today = formatDate(new Date());
     
     // Filter entries that were CREATED on the same day as their date (not backdated)
@@ -465,28 +471,22 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
     const sortedEntries = [...validEntries].sort((a, b) => new Date(b.date) - new Date(a.date));
     const hasToday = sortedEntries.some(e => e.date === today);
 
-    if (!hasToday) return { streak: 0, freezesUsed: 0 };
+    // Strict: if no entry today, streak is broken
+    if (!hasToday) return 0;
 
     let currentDate = new Date();
-    let consecutiveMisses = 0;
 
     while (true) {
       const dateStr = formatDate(currentDate);
       if (sortedEntries.some(e => e.date === dateStr)) {
         streak++;
-        consecutiveMisses = 0; // Reset consecutive misses
-        currentDate.setDate(currentDate.getDate() - 1);
-      } else if (freezesUsed < maxFreezes && consecutiveMisses === 0) {
-        // Allow missing 1 day (but not consecutive days)
-        freezesUsed++;
-        streak++;
-        consecutiveMisses++;
         currentDate.setDate(currentDate.getDate() - 1);
       } else {
+        // Break immediately on first missed day
         break;
       }
     }
-    return { streak, freezesUsed };
+    return streak;
   };
 
   const getMonthMood = () => {
@@ -501,7 +501,7 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
     return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
   };
 
-  const { streak, freezesUsed } = calculateStreak();
+  const streak = calculateStreak();
   const commonMood = getMonthMood();
   
   // Track streak milestones
@@ -590,11 +590,6 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
         <div className={`backdrop-blur-md rounded-3xl p-5 border flex flex-col items-center justify-center space-y-2 shadow-lg ${isDarkMode ? 'bg-white/5 border-white/10 shadow-indigo-900/10' : 'bg-white/40 border-white/40 shadow-rose-100'}`}>
           <span className={`text-2xl font-bold ${isDarkMode ? 'text-indigo-50' : 'text-slate-700'}`}>{streak}</span>
           <span className={`text-xs uppercase tracking-wide font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Current Streak</span>
-          {freezesUsed > 0 && (
-            <div className={`text-xs font-medium mt-1 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`} aria-label={`Streak freeze used. ${1 - freezesUsed} remaining this month`}>
-              🧊 Freeze used ({1 - freezesUsed} left)
-            </div>
-          )}
         </div>
         <div className={`backdrop-blur-md rounded-3xl p-5 border flex flex-col items-center justify-center space-y-2 shadow-lg ${isDarkMode ? 'bg-white/5 border-white/10 shadow-indigo-900/10' : 'bg-white/40 border-white/40 shadow-rose-100'}`}>
           <span className="text-3xl">{commonMood || '—'}</span>
@@ -999,7 +994,17 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
     const [showClearAccount, setShowClearAccount] = useState(false);
     const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
     const [clearConfirmEmail, setClearConfirmEmail] = useState('');
+    const [reminderEnabled, setReminderEnabled] = useState(false);
+    const [reminderHour, setReminderHour] = useState(20);
+    const [showReminderTime, setShowReminderTime] = useState(false);
     const fileInputRef = useRef(null);
+
+    // Load reminder settings on mount
+    useEffect(() => {
+      const settings = getReminderSettings();
+      setReminderEnabled(settings.enabled);
+      setReminderHour(settings.hour);
+    }, []);
 
     const handleSaveProfile = () => {
       const trimmedName = editName.trim();
@@ -1258,6 +1263,102 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
             </div>
           </button>
           
+          <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
+
+          {/* Daily Reminder */}
+          <div>
+            <button 
+              onClick={async () => {
+                if (!reminderEnabled) {
+                  // Request permission and enable
+                  const granted = await requestNotificationPermission();
+                  if (granted) {
+                    const success = await scheduleDailyReminder(reminderHour, 0);
+                    if (success) {
+                      setReminderEnabled(true);
+                      showError({
+                        type: 'generic',
+                        title: 'Reminders Enabled! 🔔',
+                        message: `You'll get a gentle reminder at ${reminderHour}:00 every day.`,
+                        actions: [],
+                        canRetry: false,
+                        canDismiss: true
+                      });
+                    }
+                  } else {
+                    showError({
+                      type: 'generic',
+                      title: 'Permission Denied',
+                      message: 'Please enable notifications in your device settings to use reminders.',
+                      actions: ['Open Settings > Notifications > One Sentence Journal'],
+                      canRetry: false,
+                      canDismiss: true
+                    });
+                  }
+                } else {
+                  // Disable reminders
+                  await cancelDailyReminder();
+                  setReminderEnabled(false);
+                }
+              }}
+              className={`w-full p-4 flex items-center justify-between transition-colors ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-white/50'}`}
+              aria-label={reminderEnabled ? "Disable daily reminders" : "Enable daily reminders"}
+              aria-pressed={reminderEnabled}
+            >
+              <div className="flex items-center space-x-3">
+                <Bell size={20} className={reminderEnabled ? (isDarkMode ? 'text-purple-300' : 'text-rose-500') : (isDarkMode ? 'text-indigo-300' : 'text-slate-500')} aria-hidden="true" />
+                <span className={`font-medium ${isDarkMode ? 'text-indigo-100' : 'text-slate-700'}`}>Daily Reminder</span>
+              </div>
+              <div className={`w-10 h-6 rounded-full p-1 transition-colors ${reminderEnabled ? (isDarkMode ? 'bg-purple-500' : 'bg-rose-500') : 'bg-slate-300'}`} aria-hidden="true">
+                 <div className={`w-4 h-4 bg-white rounded-full transition-transform ${reminderEnabled ? 'translate-x-4' : ''}`} />
+              </div>
+            </button>
+            
+            {reminderEnabled && (
+              <div className="px-4 pb-4">
+                <button
+                  onClick={() => setShowReminderTime(!showReminderTime)}
+                  className={`w-full text-left text-sm ${isDarkMode ? 'text-indigo-300' : 'text-slate-600'}`}
+                >
+                  {showReminderTime ? 'Hide' : 'Change'} reminder time (currently {reminderHour}:00)
+                </button>
+                {showReminderTime && (
+                  <div className="mt-2 flex items-center space-x-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={reminderHour}
+                      onChange={(e) => setReminderHour(parseInt(e.target.value))}
+                      className={`w-20 px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-white/10 border-indigo-500 text-white' : 'bg-white border-slate-300 text-slate-900'}`}
+                      aria-label="Reminder hour"
+                    />
+                    <span className={isDarkMode ? 'text-indigo-200' : 'text-slate-600'}>:00</span>
+                    <button
+                      onClick={async () => {
+                        const success = await scheduleDailyReminder(reminderHour, 0);
+                        if (success) {
+                          setShowReminderTime(false);
+                          showError({
+                            type: 'generic',
+                            title: 'Time Updated! ⏰',
+                            message: `Your reminder is now set for ${reminderHour}:00 every day.`,
+                            actions: [],
+                            canRetry: false,
+                            canDismiss: true
+                          });
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-lg font-medium ${isDarkMode ? 'bg-purple-500 hover:bg-purple-600 text-white' : 'bg-rose-500 hover:bg-rose-600 text-white'}`}
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className={`h-px ${isDarkMode ? 'bg-white/5' : 'bg-white/50'}`} />
 
           {/* Change Password */}
