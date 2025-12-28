@@ -58,5 +58,7 @@
 	<string>300506798842-vpve57mlcv9k13vjlek31n5d1t6j7lun.apps.googleusercontent.com</string>
 	<key>GIDServerClientID</key>
 	<string>300506798842-hsv5hvicd7qsl1ucbcocgknpe50dfcee.apps.googleusercontent.com</string>
+	<key>NSPrivacyPolicyURL</key>
+	<string>https://walruscreativeworks.com/one-sentence-privacy-policy/</string>
 </dict>
 </plist>

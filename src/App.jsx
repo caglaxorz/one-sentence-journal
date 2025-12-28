@@ -1115,7 +1115,17 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
                aria-label="Change profile picture"
                onKeyPress={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
              >
-                {user?.avatar ? <img src={user.avatar} alt={`${user?.name}'s profile picture`} className="w-full h-full object-cover" /> : (user?.name?.[0] || 'D')}
+                {user?.avatar ? (
+                  <img 
+                    src={user.avatar} 
+                    alt={`${user?.name}'s profile picture`} 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.parentElement.textContent = user?.name?.[0] || 'D';
+                    }}
+                  />
+                ) : (user?.name?.[0] || 'D')}
              </div>
              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} aria-label="Upload profile picture" />
              <div className="absolute -bottom-1 -right-1 bg-white p-1 rounded-full shadow-md text-slate-500" aria-hidden="true">
@@ -2012,12 +2022,135 @@ const EmojiPickerModal = ({ show, onClose, customPalette, setCustomPalette, isDa
   );
 };
 
+// --- Onboarding Component ---
+
+const OnboardingView = ({ onComplete, isDarkMode }) => {
+  const [currentScreen, setCurrentScreen] = useState(0);
+
+  const screens = [
+    {
+      icon: '✨',
+      title: 'Welcome to One Sentence Journal',
+      description: 'Capture your day in one powerful sentence.',
+      illustration: '💭'
+    },
+    {
+      icon: '📝',
+      title: 'How It Works',
+      description: 'Every day, write just one sentence, select a mood emoji, and watch your emotional patterns emerge.',
+      illustration: '📊'
+    },
+    {
+      icon: '🔒',
+      title: 'Your Thoughts Are Private',
+      description: 'Encrypted and secured by Firebase. Only you can access your entries.',
+      illustration: '🛡️'
+    },
+    {
+      icon: '🎯',
+      title: 'Let\'s Begin',
+      description: 'Start your journaling journey and track your emotional well-being.',
+      illustration: '🚀'
+    }
+  ];
+
+  const currentScreenData = screens[currentScreen];
+  const isLastScreen = currentScreen === screens.length - 1;
+
+  const handleNext = () => {
+    if (isLastScreen) {
+      onComplete();
+    } else {
+      setCurrentScreen(currentScreen + 1);
+    }
+  };
+
+  const handleSkip = () => {
+    onComplete();
+  };
+
+  return (
+    <div className={`min-h-screen flex flex-col justify-between p-8 ${isDarkMode ? 'bg-gradient-to-br from-indigo-950 via-purple-950 to-pink-950' : 'bg-gradient-to-br from-rose-50 via-purple-50 to-blue-50'}`}>
+      {/* Skip button */}
+      {!isLastScreen && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleSkip}
+            className={`text-sm font-medium ${isDarkMode ? 'text-indigo-300 hover:text-indigo-200' : 'text-slate-500 hover:text-slate-700'}`}
+            aria-label="Skip onboarding"
+          >
+            Skip
+          </button>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 flex flex-col items-center justify-center space-y-8 text-center">
+        {/* Illustration */}
+        <div className="text-8xl animate-bounce" role="img" aria-label={currentScreenData.illustration}>
+          {currentScreenData.illustration}
+        </div>
+
+        {/* Title & Description */}
+        <div className="space-y-4 max-w-md">
+          <div className="text-4xl" role="img" aria-label={currentScreenData.icon}>
+            {currentScreenData.icon}
+          </div>
+          <h1 className={`text-3xl font-serif font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+            {currentScreenData.title}
+          </h1>
+          <p className={`text-lg ${isDarkMode ? 'text-indigo-200' : 'text-slate-600'}`}>
+            {currentScreenData.description}
+          </p>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="space-y-4">
+        {/* Progress dots */}
+        <div className="flex justify-center space-x-2" role="navigation" aria-label="Onboarding progress">
+          {screens.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setCurrentScreen(index)}
+              className={`w-2 h-2 rounded-full transition-all ${
+                index === currentScreen
+                  ? (isDarkMode ? 'bg-indigo-400 w-8' : 'bg-rose-500 w-8')
+                  : (isDarkMode ? 'bg-indigo-800' : 'bg-slate-300')
+              }`}
+              aria-label={`Go to screen ${index + 1}`}
+              aria-current={index === currentScreen ? 'step' : undefined}
+            />
+          ))}
+        </div>
+
+        {/* Next/Get Started button */}
+        <button
+          onClick={handleNext}
+          className={`w-full py-4 rounded-2xl font-semibold text-lg transition-all transform hover:scale-105 ${
+            isDarkMode
+              ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600'
+              : 'bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:from-rose-600 hover:to-pink-600'
+          }`}
+          aria-label={isLastScreen ? 'Get started' : 'Next screen'}
+        >
+          <div className="flex items-center justify-center space-x-2">
+            <span>{isLastScreen ? 'Get Started' : 'Next'}</span>
+            <ArrowRight size={20} aria-hidden="true" />
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App Component ---
 
 const App = () => {
   // State
   const [user, setUser] = useState(null);
   const [entries, setEntries] = useState([]);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(null); // null = loading, true/false = determined
   
   // Memoized expensive calculations
   const recentEntries = useMemo(() => {
@@ -2085,6 +2218,10 @@ const App = () => {
         logger.error('Failed to parse custom palette:', e);
       }
     }
+
+    // Check onboarding status
+    const onboardingCompleted = localStorage.getItem('onboarding_completed');
+    setHasCompletedOnboarding(onboardingCompleted === 'true');
   }, []);
 
   // Sync authentication state with Firebase
@@ -2479,6 +2616,20 @@ const App = () => {
       }
     }
   };
+
+  const handleCompleteOnboarding = () => {
+    localStorage.setItem('onboarding_completed', 'true');
+    setHasCompletedOnboarding(true);
+    Analytics.logEvent('onboarding_completed', {
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  // Show onboarding for new users
+  if (hasCompletedOnboarding === null) return null; // Still loading
+  if (hasCompletedOnboarding === false) {
+    return <OnboardingView onComplete={handleCompleteOnboarding} isDarkMode={isDarkMode} />;
+  }
 
   if (view === 'loading') return null;
 
