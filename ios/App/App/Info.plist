@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>One Sentence Journal</string>
+        <string>One Sentence - Daily Journal &amp; Mood Tracker</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.lifestyle</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -60,5 +62,7 @@
 	<string>300506798842-hsv5hvicd7qsl1ucbcocgknpe50dfcee.apps.googleusercontent.com</string>
 	<key>NSPrivacyPolicyURL</key>
 	<string>https://walruscreativeworks.com/one-sentence-privacy-policy/</string>
+	<key>NSTermsOfServiceURL</key>
+	<string>https://walruscreativeworks.com/one-sentence-terms/</string>
 </dict>
 </plist>

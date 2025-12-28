@@ -45,6 +45,7 @@ import {
   deleteUser,
 } from 'firebase/auth';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { Haptics } from '@capacitor/haptics';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
@@ -52,8 +53,19 @@ import { subscribeToEntries, saveEntry, deleteEntry, migrateLocalEntries } from 
 import { APP_CONSTANTS } from './config/constants';
 import { clearUserData } from './utils/storage';
 import { sanitizeText, validateName, validatePassword, validateEmail, RateLimiter } from './utils/security';
+import { checkForUpdate, logUpdateCheck } from './utils/versionCheck';
 import { db } from './firebaseClient';
 import { collection, getDocs, deleteDoc } from 'firebase/firestore';
+import { 
+  ErrorModal, 
+  createNetworkError, 
+  createAuthError, 
+  createStorageError, 
+  createPermissionError, 
+  createRateLimitError, 
+  createGenericError,
+  createValidationError 
+} from './components/ErrorModal';
 
 // --- Constants & Config ---
 
@@ -159,7 +171,10 @@ const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
       // Reload the current user from Firebase
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        alert("Error: No user found. Please try logging in again.");
+        showError(createGenericError(
+          'Session Error',
+          'Your session has expired. Please log in again to continue.'
+        ));
         setRefreshing(false);
         return;
       }
@@ -170,12 +185,23 @@ const EmailVerificationBanner = ({ user, isDarkMode, onResend, onDismiss }) => {
       if (currentUser.emailVerified) {
         window.location.reload();
       } else {
-        alert("It seems your email isn't verified yet. Please check your inbox for the verification link. If you're still having issues, reach out to hello@walruscreativeworks.com");
+        showError({
+          type: 'auth',
+          title: 'Email Not Verified Yet',
+          message: 'Please check your inbox for the verification link we sent you.',
+          actions: [
+            'Check your email inbox and spam folder',
+            'Click the verification link in the email',
+            'Try refreshing this page again'
+          ],
+          canRetry: false,
+          canDismiss: true
+        });
         setRefreshing(false);
       }
     } catch (error) {
       logger.error('Error checking verification:', error);
-      alert("Error checking verification status. Please reach out to hello@walruscreativeworks.com");
+      showError(createNetworkError('We couldn\'t check your email verification status.'), () => handleRefresh());
       setRefreshing(false);
     }
   };
@@ -424,6 +450,8 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
 
   const calculateStreak = () => {
     let streak = 0;
+    let freezesUsed = 0;
+    const maxFreezes = 1; // Allow 1 "freeze" per month
     const today = formatDate(new Date());
     
     // Filter entries that were CREATED on the same day as their date (not backdated)
@@ -437,20 +465,28 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
     const sortedEntries = [...validEntries].sort((a, b) => new Date(b.date) - new Date(a.date));
     const hasToday = sortedEntries.some(e => e.date === today);
 
-    if (!hasToday) return 0;
+    if (!hasToday) return { streak: 0, freezesUsed: 0 };
 
     let currentDate = new Date();
+    let consecutiveMisses = 0;
 
     while (true) {
       const dateStr = formatDate(currentDate);
       if (sortedEntries.some(e => e.date === dateStr)) {
         streak++;
+        consecutiveMisses = 0; // Reset consecutive misses
+        currentDate.setDate(currentDate.getDate() - 1);
+      } else if (freezesUsed < maxFreezes && consecutiveMisses === 0) {
+        // Allow missing 1 day (but not consecutive days)
+        freezesUsed++;
+        streak++;
+        consecutiveMisses++;
         currentDate.setDate(currentDate.getDate() - 1);
       } else {
         break;
       }
     }
-    return streak;
+    return { streak, freezesUsed };
   };
 
   const getMonthMood = () => {
@@ -465,7 +501,7 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
     return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
   };
 
-  const streak = calculateStreak();
+  const { streak, freezesUsed } = calculateStreak();
   const commonMood = getMonthMood();
   
   // Track streak milestones
@@ -554,6 +590,11 @@ const DashboardView = ({ user, entries, setView, setSelectedDate, isDarkMode }) 
         <div className={`backdrop-blur-md rounded-3xl p-5 border flex flex-col items-center justify-center space-y-2 shadow-lg ${isDarkMode ? 'bg-white/5 border-white/10 shadow-indigo-900/10' : 'bg-white/40 border-white/40 shadow-rose-100'}`}>
           <span className={`text-2xl font-bold ${isDarkMode ? 'text-indigo-50' : 'text-slate-700'}`}>{streak}</span>
           <span className={`text-xs uppercase tracking-wide font-bold ${isDarkMode ? 'text-indigo-400' : 'text-slate-500'}`}>Current Streak</span>
+          {freezesUsed > 0 && (
+            <div className={`text-xs font-medium mt-1 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`} aria-label={`Streak freeze used. ${1 - freezesUsed} remaining this month`}>
+              🧊 Freeze used ({1 - freezesUsed} left)
+            </div>
+          )}
         </div>
         <div className={`backdrop-blur-md rounded-3xl p-5 border flex flex-col items-center justify-center space-y-2 shadow-lg ${isDarkMode ? 'bg-white/5 border-white/10 shadow-indigo-900/10' : 'bg-white/40 border-white/40 shadow-rose-100'}`}>
           <span className="text-3xl">{commonMood || '—'}</span>
@@ -612,12 +653,22 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
       if (isSaving) return;
       
       if (!mood) {
-        alert("Please select a mood first");
+        showError(createValidationError('Mood', 'is required. Please select how you\'re feeling.'));
         return;
       }
       
       if (!user || !user.uid) {
-        alert("You must be logged in to save entries");
+        showError({
+          type: 'auth',
+          title: 'Not Logged In',
+          message: 'You need to be logged in to save journal entries.',
+          actions: [
+            'Log in to your account',
+            'Your entry will be waiting for you'
+          ],
+          canRetry: false,
+          canDismiss: true
+        });
         return;
       }
       
@@ -666,7 +717,15 @@ const WriteView = ({ selectedDate, entries, user, setView, dailyPrompt, isDarkMo
         setEntries(prev => prev.filter(e => e.date !== entryDate));
         
         Haptics.notificationError();
-        alert('Failed to save entry. Please check your connection and try again.');
+        
+        // Determine error type
+        if (error.code === 'permission-denied') {
+          showError(createPermissionError());
+        } else if (error.message?.includes('network') || error.code === 'unavailable') {
+          showError(createNetworkError('Your entry is saved locally, but we can\'t sync it to the cloud right now.'), () => handleSave());
+        } else {
+          showError(createGenericError('Save Failed', 'We couldn\'t save your entry right now.'), () => handleSave());
+        }
       } finally {
         setIsSaving(false);
       }
@@ -945,11 +1004,11 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
     const handleSaveProfile = () => {
       const trimmedName = editName.trim();
       if (trimmedName.length === 0) {
-        alert('Please enter a name.');
+        showError(createValidationError('Name', 'is required. Please enter your name.'));
         return;
       }
       if (trimmedName.length > 24) {
-        alert('Name must be 24 characters or fewer.');
+        showError(createValidationError('Name', 'must be 24 characters or fewer.'));
         return;
       }
       const updatedUser = { ...user, name: trimmedName };
@@ -974,11 +1033,26 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
     const handleSendPasswordResetEmail = async () => {
       try {
         await sendPasswordResetEmail(auth, user.email);
-        alert('Password reset link sent to your email!');
+        showError({
+          type: 'generic',
+          title: 'Email Sent! ✉️',
+          message: 'Check your inbox for a password reset link. It should arrive within a few minutes.',
+          actions: [
+            'Check your email inbox',
+            'Don\'t forget to check spam folder',
+            'The link expires in 1 hour'
+          ],
+          canRetry: false,
+          canDismiss: true
+        });
         setShowChangePassword(false);
       } catch (error) {
         logger.error('Failed to send password reset:', error);
-        alert('Failed to send password reset email. Please try again.');
+        if (error.code === 'auth/too-many-requests') {
+          showError(createRateLimitError(15));
+        } else {
+          showError(createNetworkError('We couldn\'t send the password reset email.'), () => handleSendPasswordResetEmail());
+        }
       }
     };
 
@@ -986,12 +1060,12 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
       e.preventDefault();
       
       if (newPassword.length < 6) {
-        alert('New password must be at least 6 characters long.');
+        showError(createValidationError('Password', 'must be at least 6 characters long.'));
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        alert('New passwords do not match.');
+        showError(createValidationError('Passwords', 'do not match. Please re-enter them.'));
         return;
       }
 
@@ -1005,26 +1079,27 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         // Update password
         await updatePassword(currentUser, newPassword);
         
-        alert('Password changed successfully!');
+        showError({
+          type: 'generic',
+          title: 'Password Updated! ✓',
+          message: 'Your password has been changed successfully. Use it the next time you log in.',
+          actions: [],
+          canRetry: false,
+          canDismiss: true
+        });
         setShowChangePassword(false);
         setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } catch (error) {
         logger.error('Failed to change password:', error);
-        if (error.code === 'auth/wrong-password') {
-          alert('Current password is incorrect.');
-        } else if (error.code === 'auth/requires-recent-login') {
-          alert('For security, please log out and log back in before changing your password.');
-        } else {
-          alert('Failed to change password. Please try again.');
-        }
+        showError(createAuthError(error.code));
       }
     };
 
     const handleDeleteAllData = async () => {
       if (deleteConfirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
-        alert('Email does not match. Please enter your email correctly to confirm.');
+        showError(createValidationError('Email', 'does not match your account email. Please type it exactly.'));
         return;
       }
 
@@ -1045,24 +1120,27 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         // Delete user account (this will also trigger Firestore rules to prevent access)
         await deleteUser(currentUser);
         
-        alert('Your account and all data have been permanently deleted.');
+        showError({
+          type: 'generic',
+          title: 'Account Deleted',
+          message: 'Your account and all data have been permanently deleted. Thank you for using One Sentence Journal.',
+          actions: [],
+          canRetry: false,
+          canDismiss: true
+        });
         
         // Clear local data
         clearUserData();
         
       } catch (error) {
         logger.error('Failed to delete account:', error);
-        if (error.code === 'auth/requires-recent-login') {
-          alert('For security, please log out and log back in before deleting your account.');
-        } else {
-          alert('Failed to delete account. Please contact support at hello@walruscreativeworks.com');
-        }
+        showError(createAuthError(error.code));
       }
     };
 
     const handleClearAccount = async () => {
       if (clearConfirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
-        alert('Email does not match. Please enter your email correctly to confirm.');
+        showError(createValidationError('Email', 'does not match your account email. Please type it exactly.'));
         return;
       }
 
@@ -1087,7 +1165,14 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         // Clear local storage
         clearUserData(user.uid);
         
-        alert('All your journal data has been cleared. Your account remains active.');
+        showError({
+          type: 'generic',
+          title: 'Data Cleared ✓',
+          message: 'All your journal data has been cleared. Your account remains active and you can start fresh.',
+          actions: [],
+          canRetry: false,
+          canDismiss: true
+        });
         setShowClearAccount(false);
         setClearConfirmEmail('');
         
@@ -1096,7 +1181,7 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         
       } catch (error) {
         logger.error('Failed to clear account data:', error);
-        alert('Failed to clear account data. Please contact support at hello@walruscreativeworks.com');
+        showError(createNetworkError('We couldn\'t clear your account data right now.'));
       }
     };
 
@@ -1406,14 +1491,25 @@ const ProfileView = ({ user, setUser, isDarkMode, setIsDarkMode, handleLogout, s
         )}
 
         <div className="text-center text-xs mt-4">
-          <a
-            href="https://walruscreativeworks.com/one-sentence-privacy-policy/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'} underline`}
-          >
-            Privacy Policy
-          </a>
+          <div className="flex items-center justify-center gap-2">
+            <a
+              href="https://walruscreativeworks.com/one-sentence-privacy-policy/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'} underline`}
+            >
+              Privacy Policy
+            </a>
+            <span className={isDarkMode ? 'text-indigo-300/50' : 'text-slate-400'}>•</span>
+            <a
+              href="https://walruscreativeworks.com/one-sentence-terms/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${isDarkMode ? 'text-indigo-300 hover:text-white' : 'text-slate-500 hover:text-rose-500'} underline`}
+            >
+              Terms of Service
+            </a>
+          </div>
           <p className={`${isDarkMode ? 'text-indigo-300/70' : 'text-slate-400'} text-[10px] mt-2 leading-snug`}>
             Your entries are private and secured. Only you can access them through the app. We do not access user entries except when necessary for technical support or legal compliance, with your explicit consent.
           </p>
@@ -1455,7 +1551,14 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
     // PDF Generator - iOS compatible version using native share
     const generatePDF = async () => {
         if (sortedEntries.length === 0) {
-          alert("No entries to export!");
+          showError({
+            type: 'validation',
+            title: 'No Entries to Export',
+            message: 'You need at least one journal entry to create an export.',
+            actions: ['Write your first entry', 'Then try exporting again'],
+            canRetry: false,
+            canDismiss: true
+          });
           return;
         }
         
@@ -1499,7 +1602,7 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
             await AppLauncher.openUrl({ url: dataUrl });
           } catch (error) {
             logger.error('Failed to open:', error);
-            alert("Unable to open export. Please try again.");
+            showError(createGenericError('Export Failed', 'We couldn\'t open the export file.'), () => handleExportData());
           }
         } else {
           // Web version: open in new window with print dialog
@@ -1508,7 +1611,17 @@ const ListView = ({ entries, setSelectedDate, setView, isDarkMode }) => {
             printWindow.document.write(htmlContent);
             printWindow.document.close();
           } else {
-            alert("Please allow popups to export PDF");
+            showError({
+              type: 'permission',
+              title: 'Popup Blocked',
+              message: 'Your browser blocked the PDF export window.',
+              actions: [
+                'Allow popups for this site in your browser settings',
+                'Then try exporting again'
+              ],
+              canRetry: true,
+              canDismiss: true
+            });
           }
         }
     };
@@ -1699,7 +1812,18 @@ const EntryDetailView = ({ entries, selectedDate, setView, isDarkMode }) => {
             >
               <Edit2 size={18} aria-hidden="true" />
             </button>
-            <button onClick={() => alert("Sharing...")} className={`p-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`} aria-label="Share this entry">
+            <button 
+              onClick={() => showError({
+                type: 'generic',
+                title: 'Coming Soon',
+                message: 'Entry sharing feature is in development. Stay tuned!',
+                actions: ['Use PDF export for now to share your entries'],
+                canRetry: false,
+                canDismiss: true
+              })} 
+              className={`p-2 ${isDarkMode ? 'text-indigo-300' : 'text-slate-500'}`} 
+              aria-label="Share this entry"
+            >
               <Share size={18} aria-hidden="true" />
             </button>
           </div>
@@ -1867,7 +1991,7 @@ const EmojiPickerModal = ({ show, onClose, customPalette, setCustomPalette, isDa
 
   const handleSave = () => {
     if (selectedEmojis.length !== 5) {
-      alert('Please select exactly 5 emojis');
+      showError(createValidationError('Custom palette', 'requires exactly 5 emojis.'));
       return;
     }
 
@@ -2093,9 +2217,6 @@ const OnboardingView = ({ onComplete, isDarkMode }) => {
 
         {/* Title & Description */}
         <div className="space-y-4 max-w-md">
-          <div className="text-4xl" role="img" aria-label={currentScreenData.icon}>
-            {currentScreenData.icon}
-          </div>
           <h1 className={`text-3xl font-serif font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
             {currentScreenData.title}
           </h1>
@@ -2170,6 +2291,14 @@ const App = () => {
   const [showPaletteModal, setShowPaletteModal] = useState(false);
   const [showEmojiPickerModal, setShowEmojiPickerModal] = useState(false);
 
+  // Update check state
+  const [updateStatus, setUpdateStatus] = useState(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+
+  // Error modal state
+  const [currentError, setCurrentError] = useState(null);
+  const [errorRetryAction, setErrorRetryAction] = useState(null);
+
   // Auth State
   const [authMode, setAuthMode] = useState('login');
   const [loginEmail, setLoginEmail] = useState('');
@@ -2184,6 +2313,28 @@ const App = () => {
   // Rate limiters
   const authRateLimiterRef = useRef(new RateLimiter(APP_CONSTANTS.AUTH_MAX_ATTEMPTS, APP_CONSTANTS.AUTH_WINDOW_MS));
   const passwordResetRateLimiterRef = useRef(new RateLimiter(APP_CONSTANTS.PASSWORD_RESET_MAX_ATTEMPTS, APP_CONSTANTS.PASSWORD_RESET_WINDOW_MS));
+
+  // Error handling helper
+  const showError = (errorObj, retryFn = null) => {
+    setCurrentError(errorObj);
+    if (retryFn) {
+      setErrorRetryAction(() => retryFn);
+    } else {
+      setErrorRetryAction(null);
+    }
+  };
+
+  const closeError = () => {
+    setCurrentError(null);
+    setErrorRetryAction(null);
+  };
+
+  const retryError = () => {
+    if (errorRetryAction) {
+      errorRetryAction();
+    }
+    closeError();
+  };
 
   useEffect(() => {
     logger.log('🟢 Current view:', view);
@@ -2224,11 +2375,36 @@ const App = () => {
     setHasCompletedOnboarding(onboardingCompleted === 'true');
   }, []);
 
+  // Check for app updates when user is logged in
+  useEffect(() => {
+    if (user && view === 'dashboard') {
+      const performUpdateCheck = async () => {
+        try {
+          const status = await checkForUpdate();
+          if (status && (status.required || status.recommended)) {
+            setUpdateStatus(status);
+            setShowUpdateModal(true);
+            logUpdateCheck(status);
+          }
+        } catch (error) {
+          logger.error('Version check failed:', error);
+        }
+      };
+
+      // Check immediately on login
+      performUpdateCheck();
+
+      // Re-check every hour
+      const intervalId = setInterval(performUpdateCheck, 60 * 60 * 1000);
+
+      return () => clearInterval(intervalId);
+    }
+  }, [user, view]);
+
   // Sync authentication state with Firebase
   useEffect(() => {
     logger.log('Setting up Firebase auth listener...');
     let authFired = false;
-    let unsubscribeEntries = null;
     let mounted = true;  // Track component mount status to prevent stale updates
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -2236,12 +2412,6 @@ const App = () => {
       
       logger.log('Firebase auth state changed:', firebaseUser ? 'User logged in' : 'No user');
       authFired = true;
-      
-      // Clean up previous listener before creating new one
-      if (unsubscribeEntries) {
-        unsubscribeEntries();
-        unsubscribeEntries = null;
-      }
       
       if (firebaseUser) {
         if (mounted) {
@@ -2267,30 +2437,8 @@ const App = () => {
           setShowEmailVerificationPrompt(true);
         }
         
-        // Subscribe to real-time Firestore updates only if still mounted
-        if (mounted) {
-          unsubscribeEntries = subscribeToEntries(
-            firebaseUser.uid, 
-            (entries) => {
-              if (mounted) {  // Check before state update
-                logger.log('Loaded', entries.length, 'entries from Firestore');
-                setEntries(entries);
-              }
-            },
-            (error, userMessage) => {
-              // Handle subscription errors
-              if (mounted) {
-                logger.error('Failed to load entries:', error);
-                // Show user-friendly error message
-                alert(userMessage);
-                // If permission denied, log user out
-                if (error.code === 'permission-denied') {
-                  setView('auth');
-                }
-              }
-            }
-          );
-        }
+        // Note: Subscription to Firestore is now handled in separate useEffect
+        // with app state listener to optimize battery usage (see below)
         
         // One-time migration: move localStorage entries to Firestore
         const storageKey = `journal_entries_${firebaseUser.uid}`;
@@ -2342,13 +2490,74 @@ const App = () => {
     return () => {
       mounted = false;  // Prevent any further state updates
       unsubscribe();
-      if (unsubscribeEntries) {
-        unsubscribeEntries();
-        unsubscribeEntries = null;
-      }
       clearTimeout(timeout);
     };
   }, []);
+
+  // Background sync optimization - unsubscribe when app is backgrounded
+  useEffect(() => {
+    if (!user) return;
+
+    let activeUnsubscribe = null;
+
+    const setupSubscription = () => {
+      // Clean up existing subscription
+      if (activeUnsubscribe) {
+        activeUnsubscribe();
+        activeUnsubscribe = null;
+      }
+
+      // Subscribe to real-time updates
+      activeUnsubscribe = subscribeToEntries(
+        user.uid,
+        (entries) => {
+          logger.log('Loaded', entries.length, 'entries from Firestore (app active)');
+          setEntries(entries);
+        },
+        (error, userMessage) => {
+          logger.error('Failed to load entries:', error);
+          if (error.code === 'permission-denied') {
+            showError(createPermissionError());
+          } else if (error.code === 'unavailable') {
+            showError(createNetworkError());
+          } else {
+            showError(createGenericError('Failed to Load Entries', userMessage));
+          }
+          if (error.code === 'permission-denied') {
+            setView('auth');
+          }
+        }
+      );
+    };
+
+    // Listen for app state changes (foreground/background)
+    const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      logger.log('App state changed:', isActive ? 'active' : 'backgrounded');
+      
+      if (isActive) {
+        // Re-subscribe when app comes to foreground
+        setupSubscription();
+      } else {
+        // Unsubscribe when app goes to background to save battery
+        if (activeUnsubscribe) {
+          logger.log('Unsubscribing from Firestore (backgrounded)');
+          activeUnsubscribe();
+          activeUnsubscribe = null;
+        }
+      }
+    });
+
+    // Initial subscription
+    setupSubscription();
+
+    return () => {
+      // Cleanup on unmount
+      if (activeUnsubscribe) {
+        activeUnsubscribe();
+      }
+      appStateListener.remove();
+    };
+  }, [user]);
 
   // Theme persistence
   useEffect(() => {
@@ -2609,10 +2818,21 @@ const App = () => {
     if (auth.currentUser) {
       try {
         await sendEmailVerification(auth.currentUser);
-        alert('Verification email sent! Please check your inbox.');
+        showError({
+          type: 'generic',
+          title: 'Verification Email Sent! ✉️',
+          message: 'Check your inbox for the verification link. It should arrive within a few minutes.',
+          actions: [
+            'Check your email inbox',
+            'Don\'t forget to check spam folder',
+            'Click the link to verify your account'
+          ],
+          canRetry: false,
+          canDismiss: true
+        });
       } catch (error) {
         logger.error('Failed to send verification email:', error);
-        alert('Failed to send verification email. Please try again later.');
+        showError(createNetworkError('We couldn\'t send the verification email.'), () => handleResendVerification());
       }
     }
   };
@@ -2635,6 +2855,73 @@ const App = () => {
 
   return (
     <div className={`min-h-screen font-sans selection:bg-rose-200 transition-colors duration-1000 ${isDarkMode ? 'bg-slate-900' : 'bg-rose-50'}`}>
+      
+      {/* Update Modal (Force or Recommended) */}
+      {showUpdateModal && updateStatus && (
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-labelledby="update-modal-title"
+          aria-describedby="update-modal-description"
+        >
+          <div className={`max-w-sm w-full rounded-2xl shadow-2xl p-6 ${
+            isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-900'
+          }`}>
+            <div className="text-center">
+              <div className="mb-4 text-6xl">🔄</div>
+              <h3 
+                id="update-modal-title"
+                className="text-xl font-bold mb-2"
+              >
+                {updateStatus.required ? 'Update Required' : 'Update Available'}
+              </h3>
+              <p 
+                id="update-modal-description"
+                className={`text-sm mb-6 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}
+              >
+                {updateStatus.message}
+              </p>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    if (Capacitor.isNativePlatform()) {
+                      AppLauncher.openUrl({ url: updateStatus.updateUrl });
+                    } else {
+                      window.open(updateStatus.updateUrl, '_blank');
+                    }
+                  }}
+                  className="w-full py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white font-semibold rounded-xl transition-colors"
+                  aria-label="Update app now"
+                >
+                  Update Now
+                </button>
+                
+                {!updateStatus.required && (
+                  <button
+                    onClick={() => setShowUpdateModal(false)}
+                    className={`w-full py-3 px-4 font-semibold rounded-xl transition-colors ${
+                      isDarkMode 
+                        ? 'bg-slate-700 hover:bg-slate-600 text-white' 
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-900'
+                    }`}
+                    aria-label="Remind me later"
+                  >
+                    Remind Me Later
+                  </button>
+                )}
+              </div>
+              
+              {updateStatus.currentVersion && (
+                <p className={`text-xs mt-4 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Current version: {updateStatus.currentVersion}
+                  {updateStatus.minVersion && ` • Required: ${updateStatus.minVersion}`}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Email Verification Banner */}
       {showEmailVerificationPrompt && user && !user.emailVerified && view !== 'auth' && (
@@ -2818,6 +3105,16 @@ const App = () => {
         setCustomPalette={setCustomPalette}
         isDarkMode={isDarkMode}
       />
+      
+      {/* Error Modal */}
+      {currentError && (
+        <ErrorModal
+          error={currentError}
+          onClose={closeError}
+          onRetry={retryError}
+          isDarkMode={isDarkMode}
+        />
+      )}
       
       <style>{`
         .scrollbar-hide::-webkit-scrollbar { display: none; }

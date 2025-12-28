@@ -1,6 +1,6 @@
 {
   "appId": "com.walruscreativeworks.onesentence",
-  "appName": "One Sentence Journal",
+  "appName": "One Sentence - Daily Journal & Mood Tracker",
   "webDir": "dist",
   "plugins": {
     "GoogleAuth": {

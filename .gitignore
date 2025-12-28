@@ -39,3 +39,4 @@ android/app/src/main/res/values/strings.xml
 # Firebase Config (contains API keys)
 ios/App/GoogleService-Info.plist
 android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
