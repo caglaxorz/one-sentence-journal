@@ -5,6 +5,7 @@
 
 import { getRemoteConfig, fetchAndActivate, getValue } from 'firebase/remote-config';
 import { getApp } from 'firebase/app';
+import { logger } from './logger';
 
 /**
  * Compares semantic version strings
@@ -51,8 +52,8 @@ export const checkForUpdate = async () => {
     // Fetch and activate remote config
     await fetchAndActivate(remoteConfig);
     
-    // Get current version from package.json
-    const currentVersion = '1.0.0';
+    // Get current version from environment variable
+    const currentVersion = import.meta.env.VITE_APP_VERSION || '1.0.0';
     
     // Get remote config values
     const minVersion = getValue(remoteConfig, 'ios_min_version').asString();
@@ -88,7 +89,7 @@ export const checkForUpdate = async () => {
       recommendedVersion,
     };
   } catch (error) {
-    console.error('Error checking for update:', error);
+    logger.error('Error checking for update:', error);
     
     // Don't block the app if remote config fails
     return {
@@ -117,6 +118,6 @@ export const logUpdateCheck = (updateStatus) => {
       });
     }
   } catch (error) {
-    console.error('Error logging update check:', error);
+    logger.error('Error logging update check:', error);
   }
 };
